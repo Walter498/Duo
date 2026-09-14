@@ -36,6 +36,11 @@ static CGFloat g_dotSize  = 1.1;    // v=1 → 1.1
 static CGFloat g_wifiOff  = -0.5;   // v=1 → -0.5
 static CGFloat g_arcGap   = 120.0;  // v=1 → 120°
 static BOOL    g_dualBot  = NO;
+// 電量數字（新功能）
+static BOOL    g_pctOn    = YES;
+static CGFloat g_pctSize  = 10.0;   // v=1 → 10pt
+static CGFloat g_pctX     = 0.0;    // v=1 → 0
+static CGFloat g_pctY     = 0.0;    // v=1 → 0
 
 static CGFloat CAPrefFloat(NSString *key, CGFloat def) {
     CFNumberRef n = (CFNumberRef)CFPreferencesCopyAppValue((__bridge CFStringRef)key,
@@ -94,6 +99,24 @@ static void CALoadPrefs(void) {
         g_wifiOff = MAX(-4, MIN(4, -0.5 + (raw - 1) * 4));
     }
     g_dualBot = CAPrefFloat(@"dualBottom", 0) != 0;
+
+    // 電量數字
+    g_pctOn = CAPrefFloat(@"pctEnabled", 1) != 0;
+    {
+        CGFloat raw = CAPrefFloat(@"pctSize", 1);
+        if (raw < -0.001 || raw > 2.001) raw = 1;
+        g_pctSize = MAX(5.0, MIN(22.0, 10.0 * raw));
+    }
+    {
+        CGFloat raw = CAPrefFloat(@"pctOffsetX", 1);
+        if (raw < -0.001 || raw > 2.001) raw = 1 + MAX(-40.0, MIN(40.0, raw)) / 40.0;
+        g_pctX = (raw - 1) * 40;
+    }
+    {
+        CGFloat raw = CAPrefFloat(@"pctOffsetY", 1);
+        if (raw < -0.001 || raw > 2.001) raw = 1 + MAX(-20.0, MIN(20.0, raw)) / 20.0;
+        g_pctY = (raw - 1) * 20;
+    }
 }
 
 #pragma mark - 動態符號
@@ -238,7 +261,7 @@ static void CATakeOver(UIView *v, BOOL yes) {
     }
 }
 
-// 熱點 / 訊號：在整個狀態欄樹裡找
+// 熱點 / 訊號：在整個狀態欄樹裡找（類名 + identifier/標籤 多重匹配）
 static BOOL CAHotspotActive(UIView *batt) {
     UIView *root = CAStatusRoot(batt);
     NSMutableArray *q = [NSMutableArray arrayWithObject:root];
@@ -246,10 +269,20 @@ static BOOL CAHotspotActive(UIView *batt) {
     while (q.count && guard++ < 800) {
         UIView *v = q.firstObject;
         [q removeObjectAtIndex:0];
-        if (v != batt) {
+        if (v != batt && !v.hidden && v.alpha > 0.01) {
             NSString *cn = NSStringFromClass(v.class);
-            if ([cn rangeOfString:@"Hotspot" options:NSCaseInsensitiveSearch].location != NSNotFound &&
-                !v.hidden && v.alpha > 0.01) return YES;
+            if ([cn rangeOfString:@"Hotspot" options:NSCaseInsensitiveSearch].location != NSNotFound)
+                return YES;
+            // iOS 17 的指示器視圖類名可能是通用的，但 identifier / 標籤裡含 hotspot
+            for (NSString *key in @[@"identifier", @"itemIdentifier", @"_identifier",
+                                    @"accessibilityIdentifier", @"accessibilityLabel"]) {
+                @try {
+                    id val = [v valueForKey:key];
+                    if ([val isKindOfClass:NSString.class] &&
+                        [val rangeOfString:@"hotspot" options:NSCaseInsensitiveSearch].location != NSNotFound)
+                        return YES;
+                } @catch (id e) {}
+            }
         }
         for (UIView *s in v.subviews) [q addObject:s];
     }
@@ -330,36 +363,56 @@ static void CADressBattery(UIView *batt) {
     }
 
     CGFloat S = 22.0 * g_scale;
+    // 電量數字的預留寬度（畫布向右擴展，圓環仍貼右緣）
+    CGFloat fontPt = g_pctSize * g_scale;
+    CGFloat tw = g_pctOn ? (fontPt * 3.1 + 4.0) : 0.0;
+    CGFloat canvasW = S + tw;
+
+    // 往上找到足夠寬的容器作錨定基準（避免被小包裝盒寬度干擾）
     UIView *container = batt.superview;
+    while (container && container.bounds.size.width <= 100 && container.superview)
+        container = container.superview;
+
     CGPoint want;
-    if (container && container.bounds.size.width > 40) {
+    if (container && container.bounds.size.width > 100) {
         CGFloat W = container.bounds.size.width;
         CGFloat H = container.bounds.size.height;
         if (H < 20) H = 54.0;
-        want = CGPointMake(W - 8.0 - S / 2.0 + g_dx, H / 2.0 + g_dy);
+        want = CGPointMake(W - 8.0 - canvasW / 2.0 + g_dx, H / 2.0 + g_dy);
     } else {
         want = CGPointMake(info.naturalCenter.x + g_dx, info.naturalCenter.y + g_dy);
     }
 
-    BOOL sizeDiff = fabs(batt.bounds.size.width - S) > 0.5 || fabs(batt.bounds.size.height - S) > 0.5;
+    BOOL sizeDiff = fabs(batt.bounds.size.width - canvasW) > 0.5 ||
+                    fabs(batt.bounds.size.height - S) > 0.5;
     BOOL posDiff  = fabs(batt.center.x - want.x) > 0.5 || fabs(batt.center.y - want.y) > 0.5;
     if (sizeDiff || posDiff) {
-        if (sizeDiff) batt.bounds = CGRectMake(0, 0, S, S);
+        if (sizeDiff) batt.bounds = CGRectMake(0, 0, canvasW, S);
         batt.center = want;
         info.appliedCenter = want;
     }
 
     CATakeOver(batt, YES);
 
-    // 隱藏原生槽位（擴大到整個狀態欄樹）
+    // 隱藏原生槽位（擴大到整個狀態欄樹；類名或 identifier 命中都藏）
     UIView *root = CAStatusRoot(batt);
     NSMutableArray *q = [NSMutableArray arrayWithObject:root];
     int guard = 0;
     while (q.count && guard++ < 800) {
         UIView *v = q.firstObject;
         [q removeObjectAtIndex:0];
-        if (v != batt && CAHideMatch(NSStringFromClass(v.class)) && v.alpha > 0.01)
-            v.alpha = 0;
+        if (v != batt) {
+            BOOL match = CAHideMatch(NSStringFromClass(v.class));
+            if (!match) {
+                @try {
+                    id ident = [v valueForKey:@"identifier"];
+                    if ([ident isKindOfClass:NSString.class] &&
+                        [ident rangeOfString:@"hotspot" options:NSCaseInsensitiveSearch].location != NSNotFound)
+                        match = YES;
+                } @catch (id e) {}
+            }
+            if (match && v.alpha > 0.01) v.alpha = 0;
+        }
         for (UIView *s in v.subviews) [q addObject:s];
     }
 }
@@ -380,15 +433,15 @@ static void CADrawWifi(CGContextRef ctx, CGPoint c, CGFloat s, UIColor *ink) {
     CGContextSetLineWidth(ctx, 1.35 * s);
     CGContextSetLineCap(ctx, kCGLineCapRound);
     CGContextSetStrokeColorWithColor(ctx, ink.CGColor);
-    CGPoint base = CGPointMake(c.x, c.y + 2.3 * s);
-    const CGFloat radii[3] = {1.5, 3.6, 5.7};
+    CGPoint base = CGPointMake(c.x, c.y + 2.2 * s);
+    const CGFloat radii[3] = {2.1, 3.9, 5.7};        // 內圈加大間距 → 底部圓點不再與弧線黏在一起
     const CGFloat halfA = 0.26 * M_PI;
     for (int i = 0; i < 3; i++) {
         CGContextAddArc(ctx, base.x, base.y, radii[i] * s, -M_PI_2 - halfA, -M_PI_2 + halfA, 0);
         CGContextStrokePath(ctx);
     }
     CGContextSetFillColorWithColor(ctx, ink.CGColor);
-    CGContextFillEllipseInRect(ctx, CGRectMake(base.x - 1.1 * s, base.y - 1.1 * s, 2.2 * s, 2.2 * s));
+    CGContextFillEllipseInRect(ctx, CGRectMake(base.x - 0.95 * s, base.y - 0.95 * s, 1.9 * s, 1.9 * s));
 }
 
 static void CADrawHotspot(CGContextRef ctx, CGPoint c, CGFloat s, UIColor *ink) {
@@ -415,12 +468,13 @@ static void CADrawHotspot(CGContextRef ctx, CGPoint c, CGFloat s, UIColor *ink) 
 #pragma mark - 主繪製
 
 static void CADrawWidget(UIView *self, CGContextRef ctx, CGRect b) {
-    CGFloat S = MIN(CGRectGetWidth(b), CGRectGetHeight(b));
+    CGFloat S = MIN(b.size.height, b.size.width);   // 圓的直徑＝畫布高度
     CGFloat k = S / 22.0;
     if (k <= 0) k = 1;
     CGContextClearRect(ctx, b);
 
-    CGPoint c = CGPointMake(CGRectGetMidX(b), CGRectGetMidY(b));
+    // 圓環居中於畫布「右側 S 方形」區域；左側空間留給電量數字
+    CGPoint c = CGPointMake(CGRectGetMaxX(b) - S / 2.0, CGRectGetMidY(b));
     CGFloat lw = g_ringW * k;
     CGFloat r = S / 2.0 - lw / 2.0 - 0.5 * k;
 
@@ -428,6 +482,10 @@ static void CADrawWidget(UIView *self, CGContextRef ctx, CGRect b) {
     BOOL charging = NO;
     @try { pct = [[self valueForKey:@"chargePercent"] floatValue]; } @catch (id e) {}
     @try { charging = [[self valueForKey:@"chargingState"] intValue] != 0; } @catch (id e) {}
+    if (pct < 0 || pct > 1) {
+        CGFloat lvl = UIDevice.currentDevice.batteryLevel;
+        if (lvl >= 0) pct = lvl;
+    }
     if (pct < 0) pct = 0; if (pct > 1) pct = 1;
 
     UIColor *ink = charging ? [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0]
@@ -482,6 +540,18 @@ static void CADrawWidget(UIView *self, CGContextRef ctx, CGRect b) {
             [rat drawAtPoint:CGPointMake(wc.x - sz.width / 2.0, wc.y - sz.height / 2.0)
               withAttributes:attrs];
         }
+    }
+
+    // 電量數字（圓環左側，可開關/調大小/調位置）
+    if (g_pctOn) {
+        NSString *txt = [NSString stringWithFormat:@"%d%%", (int)round(pct * 100)];
+        UIFont *f = [UIFont monospacedDigitSystemFontOfSize:g_pctSize * g_scale
+                                                     weight:UIFontWeightSemibold];
+        NSDictionary *attrs = @{NSFontAttributeName: f, NSForegroundColorAttributeName: ink};
+        CGSize sz = [txt sizeWithAttributes:attrs];
+        CGFloat x = c.x - S / 2.0 - 4.0 - sz.width + g_pctX * k;   // 貼在圓環左側
+        CGFloat y = c.y - sz.height / 2.0 + g_pctY * k;
+        [txt drawAtPoint:CGPointMake(x, y) withAttributes:attrs];
     }
 }
 
@@ -552,15 +622,35 @@ static void CATick(void) {
     }
 }
 
+#pragma mark - 前景佈局 hook：系統排完版後立刻把我們的視圖釘回去（保證滑桿即時且位置不被系統覆蓋）
+
+static void (*orig_fg_layout)(UIView *, SEL);
+static void hook_fg_layout(UIView *self, SEL _cmd) {
+    orig_fg_layout(self, _cmd);
+    if (!g_enabled) return;
+    for (UIView *v in g_battViews.allObjects) {
+        // 只處理屬於這個狀態欄實例的電池視圖
+        UIView *root = CAStatusRoot(v);
+        if (root == self || [self isDescendantOfView:root] || [root isDescendantOfView:self]) {
+            CADressBattery(v);
+            [v setNeedsDisplay];
+        }
+    }
+}
+
 #pragma mark - Hook 安裝
 
 static void CAInstallHooks(void) {
     Class bt = ClassOrNil(@"STUIStatusBarStaticBatteryView");
+    Class fg = ClassOrNil(@"STUIStatusBarForegroundView");
 
     if (bt) {
         MSHookMessageEx(bt, @selector(drawRect:), (IMP)hook_batt_draw, (IMP *)&orig_batt_draw);
         MSHookMessageEx(bt, @selector(setBackgroundColor:), (IMP)hook_setBg, (IMP *)&orig_setBg);
         MSHookMessageEx(bt, @selector(setOpaque:), (IMP)hook_setOpaque, (IMP *)&orig_setOpaque);
+    }
+    if (fg) {
+        MSHookMessageEx(fg, @selector(layoutSubviews), (IMP)hook_fg_layout, (IMP *)&orig_fg_layout);
     }
 
     SEL styleSel = NSSelectorFromString(@"applyStyleAttributes:");
@@ -569,6 +659,13 @@ static void CAInstallHooks(void) {
 
     void *ct = dlopen("/System/Library/Frameworks/CoreTelephony.framework/CoreTelephony", RTLD_LAZY);
     if (ct) pCTGetSignalStrength = (CTGetSignalStrength_t)dlsym(ct, "CTGetSignalStrength");
+}
+
+#pragma mark - Darwin 通知（即時生效）
+static void CAPrefsChangedCallback(CFNotificationCenterRef center, void *observer,
+                                   CFStringRef name, const void *object,
+                                   CFDictionaryRef userInfo) {
+    dispatch_async(dispatch_get_main_queue(), ^{ CATick(); });
 }
 
 #pragma mark - 入口
@@ -582,7 +679,13 @@ __attribute__((constructor)) static void ca_init(void) {
                     object:nil queue:[NSOperationQueue mainQueue]
                 usingBlock:^(NSNotification *n) {
         [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) {
-            CATick();
+            CATick();   // 每秒兜底；正常情況滑桿一鬆手就會由通知即時觸發
         }];
     }];
+
+    CFNotificationCenterAddObserver(
+        CFNotificationCenterGetDarwinNotifyCenter(), NULL,
+        CAPrefsChangedCallback,
+        CFSTR("com.shuijia.duostatus/preferencesChanged"), NULL,
+        (CFNotificationSuspensionBehavior)0);
 }
