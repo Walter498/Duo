@@ -1,22 +1,19 @@
 /*
- * DuoStatusBar —— iPhone Duo 風格狀態欄（CAiPhoneDuoStatus 重構增強版）
+ * DuoStatusBar —— iPhone Duo 風格狀態欄 v1.1
  * iOS 16-17 / RootHide rootless / SpringBoard
  *
- * 架構：MSHookMessageEx 替換原生狀態欄控件方法，系統控件自己重畫成 Duo 樣式。
- * 數據（電量/充電/訊號格/Wi-Fi/4G-5G）全部讀原生控件屬性，系統自動更新。
- *
- * 新增：偏好設定（設置 App 內調節，即時生效，無需 respring）
- *   enabled    總開關
- *   scale      整體圖標縮放 (0.5 - 1.6)
- *   offsetX    左右位置微調
- *   offsetY    上下位置微調
- *   gapRingMid 圓環 ↔ Wi-Fi/4G/5G 間距
- *   gapMidDots 中間圖標 ↔ 訊號四點間距
+ * v1.1 修復：
+ *   1. 原生控件內容靠子視圖/子圖層渲染，僅換 drawRect 不夠 → 重排時一併隱藏原生子內容
+ *   2. 雙卡機型訊號視圖是 STUIStatusBarDualCellularSignalView → 同樣 hook，並用
+ *      CoreTelephony CTGetSignalStrength 直接取「主卡」格數
+ *   3. 1 秒定時器主動觸發重繪（原生繪製被抑制後也要保持電量/訊號實時更新）
+ *   4. 設置面板恢復為 PreferenceBundle（CI 上出真 arm64e）
  */
 
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <substrate.h>
+#import <dlfcn.h>
 
 #pragma mark - 偏好（suite: com.shuijia.duostatus）
 
@@ -24,8 +21,8 @@ static BOOL    g_enabled  = YES;
 static CGFloat g_scale    = 1.0;
 static CGFloat g_dx       = 0.0;
 static CGFloat g_dy       = 0.0;
-static CGFloat g_gap1     = 2.0;   // 圓環 ↔ 中間
-static CGFloat g_gap2     = 2.0;   // 中間 ↔ 四點
+static CGFloat g_gap1     = 2.0;
+static CGFloat g_gap2     = 2.0;
 
 static void CALoadPrefs(void);
 
@@ -49,19 +46,28 @@ static void CALoadPrefs(void) {
     g_gap2    = CAPrefFloat(@"gapMidDots", 2);
 }
 
+#pragma mark - CoreTelephony 主卡訊號（雙卡機型用）
+
+typedef int (*CTGetSignalStrength_t)(int *, int *);
+static CTGetSignalStrength_t pCTGetSignalStrength;
+
+static int CAPrimaryBars(void) {
+    if (!pCTGetSignalStrength) return 0;
+    int bars = 0, raw = 0;
+    pCTGetSignalStrength(&bars, &raw);
+    if (bars < 0) bars = 0;
+    if (bars > 4) bars = 4;
+    return bars;
+}
+
 #pragma mark - CANativeStatusState
 
 @interface CANativeStatusState : NSObject
 @property (nonatomic, weak) UIView *host;
 @property (nonatomic, weak) UIView *battery;
-@property (nonatomic, weak) UIView *cellular;
-@property (nonatomic, weak) UIView *cellularSource;
-@property (nonatomic, weak) UIView *network;
-@property (nonatomic, assign) CGRect batteryFrame;
-@property (nonatomic, assign) CGRect cellularFrame;
-@property (nonatomic, assign) CGRect networkFrame;
+@property (nonatomic, weak) UIView *cellular;      // 單卡 SignalView 或雙卡 DualCellularSignalView
+@property (nonatomic, weak) UIView *network;       // WifiSignalView 或 CellularNetworkTypeView
 @property (nonatomic, assign) BOOL applyingLayout;
-@property (nonatomic, assign) BOOL hasBaseline;
 @end
 
 @implementation CANativeStatusState
@@ -103,19 +109,26 @@ static CANativeStatusState *CAStateFor(UIView *foreground) {
     return s;
 }
 
+// v1.1：原生控件的內容是子視圖/子圖層畫的，必須一併隱藏，否則會與我們的繪製疊在一起
+static void CAHideNativeContent(UIView *v, BOOL hide) {
+    for (UIView *sub in v.subviews) sub.hidden = hide;
+    for (CALayer *sl in v.layer.sublayers) sl.hidden = hide;
+}
+
 #pragma mark - 前向聲明
 static void (*orig_batt_draw)(UIView *, SEL);
 static void hook_batt_draw(UIView *self, SEL _cmd);
 static void (*orig_sig_draw)(UIView *, SEL);
 static void hook_sig_draw(UIView *self, SEL _cmd);
+static void (*orig_dual_draw)(UIView *, SEL);
 static void (*orig_fg_layout)(UIView *, SEL);
 static void hook_fg_layout(UIView *self, SEL _cmd);
 static void (*orig_batt_tint)(UIView *, SEL);
-static void (*orig_sig_tint)(UIView *, SEL);
 static void hook_batt_tint(UIView *self, SEL _cmd);
+static void (*orig_sig_tint)(UIView *, SEL);
 static void hook_sig_tint(UIView *self, SEL _cmd);
 
-#pragma mark - 電池圓環（drawRect: 替代實現，隨 bounds 自動縮放）
+#pragma mark - 電池圓環
 
 static void hook_batt_draw(UIView *self, SEL _cmd) {
     if (!g_enabled || !CAInMainStatusBar(self)) { orig_batt_draw(self, _cmd); return; }
@@ -128,9 +141,10 @@ static void hook_batt_draw(UIView *self, SEL _cmd) {
     if (pct < 0) pct = 0; if (pct > 1) pct = 1;
 
     CGRect b = self.bounds;
-    CGFloat k = MIN(CGRectGetWidth(b), CGRectGetHeight(b)) / 18.0;   // 相對 18pt 基準縮放
+    CGFloat k = MIN(CGRectGetWidth(b), CGRectGetHeight(b)) / 18.0;
     if (k <= 0) k = 1;
     CGContextRef ctx = UIGraphicsGetCurrentContext();
+    CGContextClearRect(ctx, b);
     CGPoint c = CGPointMake(CGRectGetMidX(b), CGRectGetMidY(b));
     CGFloat r = MIN(CGRectGetWidth(b), CGRectGetHeight(b)) / 2.0 - 1.5 * k;
 
@@ -153,18 +167,28 @@ static void hook_batt_draw(UIView *self, SEL _cmd) {
     CGContextFillEllipseInRect(ctx, CGRectMake(c.x - 1.6 * k, c.y - 1.6 * k, 3.2 * k, 3.2 * k));
 }
 
-#pragma mark - 訊號四點（drawRect: 替代實現）
+#pragma mark - 訊號四點（單卡/雙卡通用）
 
 static void hook_sig_draw(UIView *self, SEL _cmd) {
-    if (!g_enabled || !CAInMainStatusBar(self)) { orig_sig_draw(self, _cmd); return; }
+    BOOL isDual = [NSStringFromClass(self.class) containsString:@"DualCellular"];
+    if (!g_enabled || !CAInMainStatusBar(self)) {
+        (isDual ? orig_dual_draw : orig_sig_draw)(self, _cmd);
+        return;
+    }
 
-    NSInteger bars = 0;
-    @try { bars = [[self valueForKey:@"numberOfActiveBars"] integerValue]; } @catch (id e) {}
+    NSInteger bars;
+    if (isDual) {
+        bars = CAPrimaryBars();      // 雙卡：直接取主卡
+    } else {
+        bars = 0;
+        @try { bars = [[self valueForKey:@"numberOfActiveBars"] integerValue]; } @catch (id e) {}
+    }
     if (bars < 0) bars = 0; if (bars > 4) bars = 4;
 
     CGRect b = self.bounds;
     CGFloat k = CGRectGetWidth(b) / 22.0; if (k <= 0) k = 1;
     CGContextRef ctx = UIGraphicsGetCurrentContext();
+    CGContextClearRect(ctx, b);
     UIColor *ink = self.tintColor ?: UIColor.blackColor;
     UIColor *dim = [ink colorWithAlphaComponent:0.22];
 
@@ -180,7 +204,7 @@ static void hook_sig_draw(UIView *self, SEL _cmd) {
     }
 }
 
-#pragma mark - 前景重排（偏好設定驅動的 Duo 豎排佈局）
+#pragma mark - 前景重排
 
 static void hook_fg_layout(UIView *self, SEL _cmd) {
     orig_fg_layout(self, _cmd);
@@ -195,19 +219,22 @@ static void hook_fg_layout(UIView *self, SEL _cmd) {
     Class clsDual = ClassOrNil(@"STUIStatusBarDualCellularSignalView");
     Class clsNet  = ClassOrNil(@"STUIStatusBarCellularNetworkTypeView");
 
+    UIView *batt = nil, *cell = nil, *wifi = nil, *net = nil;
     for (UIView *v in self.subviews) {
-        if (clsBatt && [v isKindOfClass:clsBatt]) s.battery = v;
-        else if (clsWifi && [v isKindOfClass:clsWifi]) s.network = v;
-        else if (clsNet  && [v isKindOfClass:clsNet])  s.network = v;
-        else if (clsDual && [v isKindOfClass:clsDual]) s.cellularSource = v;
-        else if (clsSig  && [v isKindOfClass:clsSig])  s.cellular = v;
+        if (clsBatt && [v isKindOfClass:clsBatt]) batt = v;
+        else if (clsWifi && [v isKindOfClass:clsWifi]) wifi = v;
+        else if (clsNet  && [v isKindOfClass:clsNet])  net = v;
+        else if (clsDual && [v isKindOfClass:clsDual]) cell = v;   // 雙卡
+        else if (clsSig  && [v isKindOfClass:clsSig])  cell = v;   // 單卡
     }
-    if (!s.cellular && s.cellularSource) s.cellular = s.cellularSource;
+    s.battery = batt;
+    s.cellular = cell;
+    s.network = wifi ?: net;   // Wi-Fi 優先，無 Wi-Fi 時顯示 4G/5G
 
     CGRect axis = CGRectNull;
-    for (UIView *v in @[s.battery ?: (UIView *)[NSNull null],
+    for (UIView *v in @[batt ?: (UIView *)[NSNull null],
                         s.network ?: (UIView *)[NSNull null],
-                        s.cellular ?: (UIView *)[NSNull null]]) {
+                        cell ?: (UIView *)[NSNull null]]) {
         if ([v isKindOfClass:UIView.class] && [(UIView *)v superview])
             axis = CGRectIsNull(axis) ? [(UIView *)v frame]
                                       : CGRectUnion(axis, [(UIView *)v frame]);
@@ -222,31 +249,26 @@ static void hook_fg_layout(UIView *self, SEL _cmd) {
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
 
-    // 圓環
-    if (s.battery) {
-        s.batteryFrame = CGRectMake(cx - 9 * sc, top, 18 * sc, 18 * sc);
-        s.battery.frame = s.batteryFrame;
-        [s.battery setNeedsDisplay];
+    if (batt) {
+        batt.frame = CGRectMake(cx - 9 * sc, top, 18 * sc, 18 * sc);
+        CAHideNativeContent(batt, YES);
+        [batt setNeedsDisplay];
     }
-    // 中間：Wi-Fi / 4G-5G（與圓環間距 g_gap1）
     if (s.network) {
-        s.networkFrame = CGRectMake(cx - 12 * sc,
-                                    top + 18 * sc + g_gap1,
-                                    24 * sc, 10 * sc);
-        s.network.frame = s.networkFrame;
+        s.network.frame = CGRectMake(cx - 12 * sc,
+                                     top + 18 * sc + g_gap1,
+                                     24 * sc, 10 * sc);
     }
-    // 訊號四點（與中間間距 g_gap2）
-    if (s.cellular) {
-        s.cellularFrame = CGRectMake(cx - 11 * sc,
-                                     top + 18 * sc + g_gap1 + 10 * sc + g_gap2,
-                                     22 * sc, 7 * sc);
-        s.cellular.frame = s.cellularFrame;
-        [s.cellular setNeedsDisplay];
+    if (cell) {
+        cell.frame = CGRectMake(cx - 11 * sc,
+                                top + 18 * sc + g_gap1 + 10 * sc + g_gap2,
+                                22 * sc, 7 * sc);
+        CAHideNativeContent(cell, YES);
+        [cell setNeedsDisplay];
     }
 
     [CATransaction commit];
     s.applyingLayout = NO;
-    s.hasBaseline = YES;
 }
 
 #pragma mark - 深淺色適配
@@ -259,12 +281,30 @@ static void hook_sig_tint(UIView *self, SEL _cmd) {
     if (g_enabled && CAInMainStatusBar(self)) [self setNeedsDisplay];
 }
 
-#pragma mark - 偏好變更 → 刷新所有狀態欄
+#pragma mark - 1 秒定時刷新（原生繪製被抑制後保持實時）
+static void CAScheduleRefresh(void) {
+    [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) {
+        if (!g_enabled) return;
+        for (UIView *host in g_hosts.allObjects) {
+            CANativeStatusState *s = objc_getAssociatedObject(host, &kCAStateKey);
+            [s.battery setNeedsDisplay];
+            [s.cellular setNeedsDisplay];
+        }
+    }];
+}
+
+#pragma mark - 偏好變更
 static void CAReloadAll(void) {
     CALoadPrefs();
-    for (UIView *v in g_hosts.allObjects) {
-        [v setNeedsLayout];
-        [v layoutIfNeeded];
+    for (UIView *host in g_hosts.allObjects) {
+        CANativeStatusState *s = objc_getAssociatedObject(host, &kCAStateKey);
+        // 關閉時恢復原生內容可見性，再交還原生佈局
+        if (s.battery)  CAHideNativeContent(s.battery, g_enabled ? YES : NO);
+        if (s.cellular) CAHideNativeContent(s.cellular, g_enabled ? YES : NO);
+        [host setNeedsLayout];
+        [host layoutIfNeeded];
+        [s.battery setNeedsDisplay];
+        [s.cellular setNeedsDisplay];
     }
 }
 
@@ -273,6 +313,7 @@ static void CAInstallHooks(void) {
     Class fg = ClassOrNil(@"STUIStatusBarForegroundView");
     Class bt = ClassOrNil(@"STUIStatusBarStaticBatteryView");
     Class sg = ClassOrNil(@"STUIStatusBarCellularSignalView");
+    Class dg = ClassOrNil(@"STUIStatusBarDualCellularSignalView");
 
     if (fg) MSHookMessageEx(fg, @selector(layoutSubviews),
                             (IMP)hook_fg_layout, (IMP *)&orig_fg_layout);
@@ -284,21 +325,12 @@ static void CAInstallHooks(void) {
         MSHookMessageEx(sg, @selector(drawRect:), (IMP)hook_sig_draw, (IMP *)&orig_sig_draw);
         MSHookMessageEx(sg, @selector(tintColorDidChange), (IMP)hook_sig_tint, (IMP *)&orig_sig_tint);
     }
-}
+    if (dg) {
+        MSHookMessageEx(dg, @selector(drawRect:), (IMP)hook_sig_draw, (IMP *)&orig_dual_draw);
+    }
 
-#pragma mark - 控制中心
-static void CAObserveControlCenter(void) {
-    NSNotificationCenter *nc = NSNotificationCenter.defaultCenter;
-    [nc addObserverForName:@"SBControlCenterControllerWillPresentNotification"
-                    object:nil queue:NSOperationQueue.mainQueue
-                usingBlock:^(NSNotification *n) {
-        for (UIView *v in g_hosts.allObjects) [v setNeedsLayout];
-    }];
-    [nc addObserverForName:@"SBControlCenterControllerDidDismissNotification"
-                    object:nil queue:NSOperationQueue.mainQueue
-                usingBlock:^(NSNotification *n) {
-        for (UIView *v in g_hosts.allObjects) [v setNeedsLayout];
-    }];
+    void *ct = dlopen("/System/Library/Frameworks/CoreTelephony.framework/CoreTelephony", RTLD_LAZY);
+    if (ct) pCTGetSignalStrength = (CTGetSignalStrength_t)dlsym(ct, "CTGetSignalStrength");
 }
 
 #pragma mark - 入口
@@ -306,9 +338,13 @@ __attribute__((constructor)) static void ca_init(void) {
     CALoadPrefs();
     g_hosts = [NSHashTable weakObjectsHashTable];
     CAInstallHooks();
-    CAObserveControlCenter();
 
-    // 設置面板保存 → Darwin 通知 → 即時生效
+    // SpringBoard 啟動後啟動定時刷新
+    [[NSNotificationCenter defaultCenter]
+        addObserverForName:UIApplicationDidFinishLaunchingNotification
+                    object:nil queue:[NSOperationQueue mainQueue]
+                usingBlock:^(NSNotification *n) { CAScheduleRefresh(); }];
+
     CFNotificationCenterAddObserver(
         CFNotificationCenterGetDarwinNotifyCenter(), NULL,
         (CFNotificationCallback)CAReloadAll,
