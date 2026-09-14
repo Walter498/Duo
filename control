@@ -1,6 +1,6 @@
 Package: com.shuijia.duostatus
 Name: DuoStatusBar
-Version: 1.1.0
+Version: 1.3.0
 Architecture: iphoneos-arm64
 Maintainer: shuijia
 Depends: mobilesubstrate | ellekit, firmware (>= 16.0)

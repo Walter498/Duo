@@ -8,7 +8,9 @@
             <key>cell</key>
             <string>PSGroupCell</string>
             <key>label</key>
-            <string>總開關（關閉即恢復原生狀態欄）</string>
+            <string>啟用</string>
+            <key>footerText</key>
+            <string>修改任意選項都會即時生效，無需 respring。關閉總開關會立即恢復原生狀態欄圖標。</string>
         </dict>
         <dict>
             <key>cell</key>
@@ -29,9 +31,9 @@
             <key>cell</key>
             <string>PSGroupCell</string>
             <key>label</key>
-            <string>整體外觀</string>
+            <string>整體大小與位置</string>
             <key>footerText</key>
-            <string>調整後即時生效，無需 respring</string>
+            <string>圖標以狀態欄右側原生區域為基準排布：一個完整的圓（頂弧＝電量，底部缺口＝訊號點，圓心＝Wi-Fi）。</string>
         </dict>
         <dict>
             <key>cell</key>
@@ -41,7 +43,7 @@
             <key>min</key>
             <real>0.5</real>
             <key>max</key>
-            <real>1.6</real>
+            <real>1.8</real>
             <key>showValue</key>
             <true/>
             <key>defaults</key>
@@ -49,7 +51,7 @@
             <key>key</key>
             <string>scale</string>
             <key>label</key>
-            <string>整體縮放</string>
+            <string>圖標整體大小（1.0＝標準 · 0.5＝最小 · 1.8＝最大）</string>
             <key>PostNotification</key>
             <string>com.shuijia.duostatus/preferencesChanged</string>
         </dict>
@@ -69,7 +71,7 @@
             <key>key</key>
             <string>offsetX</string>
             <key>label</key>
-            <string>左右位置（負值向左）</string>
+            <string>左右位置（負值＝向左，正值＝向右，單位 pt）</string>
             <key>PostNotification</key>
             <string>com.shuijia.duostatus/preferencesChanged</string>
         </dict>
@@ -89,7 +91,7 @@
             <key>key</key>
             <string>offsetY</string>
             <key>label</key>
-            <string>上下位置（負值向上）</string>
+            <string>上下位置（負值＝向上，正值＝向下，單位 pt）</string>
             <key>PostNotification</key>
             <string>com.shuijia.duostatus/preferencesChanged</string>
         </dict>
@@ -98,54 +100,87 @@
             <key>cell</key>
             <string>PSGroupCell</string>
             <key>label</key>
-            <string>間距調節</string>
-        </dict>
-        <dict>
-            <key>cell</key>
-            <string>PSSliderCell</string>
-            <key>default</key>
-            <real>2</real>
-            <key>min</key>
-            <real>0</real>
-            <key>max</key>
-            <real>15</real>
-            <key>showValue</key>
-            <true/>
-            <key>defaults</key>
-            <string>com.shuijia.duostatus</string>
-            <key>key</key>
-            <string>gapRingMid</string>
-            <key>label</key>
-            <string>圓環 ↔ Wi-Fi/4G/5G 間距</string>
-            <key>PostNotification</key>
-            <string>com.shuijia.duostatus/preferencesChanged</string>
-        </dict>
-        <dict>
-            <key>cell</key>
-            <string>PSSliderCell</string>
-            <key>default</key>
-            <real>2</real>
-            <key>min</key>
-            <real>0</real>
-            <key>max</key>
-            <real>15</real>
-            <key>showValue</key>
-            <true/>
-            <key>defaults</key>
-            <string>com.shuijia.duostatus</string>
-            <key>key</key>
-            <string>gapMidDots</string>
-            <key>label</key>
-            <string>中間圖標 ↔ 訊號四點間距</string>
-            <key>PostNotification</key>
-            <string>com.shuijia.duostatus/preferencesChanged</string>
-        </dict>
-
-        <dict>
-            <key>cell</key>
-            <string>PSGroupCell</string>
+            <string>圓環</string>
             <key>footerText</key>
-            <string>DuoStatusBar 1.0.0 · iPhone Duo 風格狀態欄</string>
+            <string>圓環顯示當前電量百分比；充電時整圈變綠色，平時跟隨狀態欄顏色（深色背景白色、淺色背景黑色）。</string>
+        </dict>
+        <dict>
+            <key>cell</key>
+            <string>PSSliderCell</string>
+            <key>default</key>
+            <real>2.6</real>
+            <key>min</key>
+            <real>1.0</real>
+            <key>max</key>
+            <real>4.5</real>
+            <key>showValue</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.shuijia.duostatus</string>
+            <key>key</key>
+            <string>ringWidth</string>
+            <key>label</key>
+            <string>圓環線條粗細</string>
+            <key>PostNotification</key>
+            <string>com.shuijia.duostatus/preferencesChanged</string>
+        </dict>
+        <dict>
+            <key>cell</key>
+            <string>PSSliderCell</string>
+            <key>default</key>
+            <real>-0.5</real>
+            <key>min</key>
+            <real>-4</real>
+            <key>max</key>
+            <real>4</real>
+            <key>showValue</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.shuijia.duostatus</string>
+            <key>key</key>
+            <string>wifiOffset</string>
+            <key>label</key>
+            <string>圓心 Wi-Fi／文字 上下位置（負值＝偏上）</string>
+            <key>PostNotification</key>
+            <string>com.shuijia.duostatus/preferencesChanged</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSGroupCell</string>
+            <key>label</key>
+            <string>訊號點</string>
+            <key>footerText</key>
+            <string>圓環底部缺口上的四個圓點＝主卡訊號強度（0-4 格實時顯示）。無 Wi-Fi 時圓心會顯示 5G／4G。</string>
+        </dict>
+        <dict>
+            <key>cell</key>
+            <string>PSSliderCell</string>
+            <key>default</key>
+            <real>1.5</real>
+            <key>min</key>
+            <real>0.8</real>
+            <key>max</key>
+            <real>3.0</real>
+            <key>showValue</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.shuijia.duostatus</string>
+            <key>key</key>
+            <string>dotSize</string>
+            <key>label</key>
+            <string>訊號圓點大小</string>
+            <key>PostNotification</key>
+            <string>com.shuijia.duostatus/preferencesChanged</string>
+        </dict>
+
+        <dict>
+            <key>cell</key>
+            <string>PSGroupCell</string>
+            <key>label</key>
+            <string>關於</string>
+            <key>footerText</key>
+            <string>DuoStatusBar 1.3.0 · iPhone Duo 風格狀態欄 · 源碼與更新：github.com/Walter498/Duo</string>
         </dict>
     </array>
 </dict>
