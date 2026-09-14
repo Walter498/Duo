@@ -17,14 +17,14 @@ libplist
 gpatch
 libmd
 [32m==>[0m [1mFetching downloads for: [32mldid[39m and [32mdpkg[39m[0m
+✔︎ Bottle ldid (2.1.5_1)
 ✔︎ Bottle Manifest gpatch (2.8)
 ✔︎ Bottle Manifest libplist (2.7.0)
 ✔︎ Bottle libplist (2.7.0)
 ✔︎ Bottle gpatch (2.8)
-✔︎ Bottle ldid (2.1.5_1)
+✔︎ Bottle dpkg (1.23.7)
 ✔︎ Bottle Manifest libmd (1.2.0)
 ✔︎ Bottle libmd (1.2.0)
-✔︎ Bottle dpkg (1.23.7)
 [32m==>[0m [1mInstalling ldid dependency: [32mlibplist[39m[0m
 [34m==>[0m [1mPouring libplist--2.7.0.arm64_sonoma.bottle.tar.gz[0m
 🍺  /opt/homebrew/Cellar/libplist/2.7.0: 32 files, 606.6KB
@@ -91,6 +91,24 @@ toolchain
 vendor
 [0;36m==> [1;36mNotice:[m Build may be slow as Theos isn’t using all available CPU cores on this computer. Consider upgrading GNU Make: https://theos.dev/docs/parallel-building
 [1;31m> [1;3;39mMaking all for tweak DuoStatusBar…[m
-[0;31m==> [1;31mError:[m File Tweak.xm does not exist.
-make[1]: *** [before-DuoStatusBar-all] Error 1
-make: *** [DuoStatusBar.all.tweak.variables] Error 2
+[0;31m==> [1;39mPreprocessing src/Tweak.xm…[m
+[0;32m==> [1;39mCompiling src/Tweak.xm (arm64e)…[m
+[0;33m==> [1;39mLinking tweak DuoStatusBar (arm64e)…[m
+ld: warning: -multiply_defined is obsolete
+[0;34m==> [1;39mGenerating debug symbols for DuoStatusBar…[m
+[0;34m==> [1;39mStripping DuoStatusBar (arm64e)…[m
+[0;34m==> [1;39mSigning DuoStatusBar…[m
+[1;31m> [1;3;39mMaking all in duostatusprefs…[m
+[0;36m==> [1;36mNotice:[m Build may be slow as Theos isn’t using all available CPU cores on this computer. Consider upgrading GNU Make: https://theos.dev/docs/parallel-building
+[1;31m> [1;3;39mMaking all for bundle DuoStatusPrefs…[m
+[0;35m==> [1;39mCopying resource directories into the bundle wrapper…[m
+[0;32m==> [1;39mCompiling DuoStatusRootListController.m (arm64e)…[m
+[0;33m==> [1;39mLinking bundle DuoStatusPrefs (arm64e)…[m
+ld: warning: -multiply_defined is obsolete
+ld: framework 'Preferences' not found
+clang: [0;1;31merror: [0m[1mlinker command failed with exit code 1 (use -v to see invocation)[0m
+make[4]: *** [/Users/runner/work/Duo/Duo/.theos/obj/arm64e/DuoStatusPrefs.bundle/DuoStatusPrefs] Error 1
+make[3]: *** [/Users/runner/work/Duo/Duo/.theos/obj/arm64e/DuoStatusPrefs.bundle/DuoStatusPrefs] Error 2
+make[2]: *** [internal-bundle-all_] Error 2
+make[1]: *** [DuoStatusPrefs.all.bundle.variables] Error 2
+make: *** [internal-all] Error 2
