@@ -7,8 +7,9 @@ BUNDLE_NAME = DuoStatusPrefs
 DuoStatusPrefs_FILES = DuoStatusRootListController.m
 DuoStatusPrefs_INSTALL_PATH = /Library/PreferenceBundles
 DuoStatusPrefs_FRAMEWORKS = UIKit
-DuoStatusPrefs_PRIVATE_FRAMEWORKS = Preferences
 DuoStatusPrefs_CFLAGS = -fobjc-arc
+# macOS Xcode SDK 沒有 Preferences 私有框架的 tbd，用動態查找在運行時從 Settings 進程解析
+DuoStatusPrefs_LDFLAGS = -undefined dynamic_lookup
 
 include $(THEOS_MAKE_PATH)/bundle.mk
 
