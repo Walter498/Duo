@@ -43,10 +43,11 @@ static CGFloat g_pctSize  = 10.0;   // v=1 → 10pt
 static CGFloat g_pctX     = 0.0;    // v=1 → 0
 static CGFloat g_pctY     = 0.0;    // v=1 → 0
 static BOOL    g_pctRight = NO;     // 數字顯示在圓環右側（預設左側）
+static BOOL    g_ccOn     = YES;    // 控制中心狀態欄：顯示 Duo 圖標（關閉＝完全原生）
 // 元件開關（v1.8 精簡模式：默認只畫電量弧）
-static BOOL    g_showTrack  = NO;   // 圓環底槽
-static BOOL    g_showDots   = NO;   // 訊號點
-static BOOL    g_showCenter = NO;   // 圓心 Wi-Fi/5G/熱點
+static BOOL    g_showTrack  = YES;  // 圓環底槽（v1.8.2 恢復默認顯示）
+static BOOL    g_showDots   = YES;  // 訊號點（v1.8.2 恢復默認顯示）
+static BOOL    g_showCenter = YES;  // 圓心 Wi-Fi/5G/熱點（v1.8.2 恢復默認顯示）
 
 static CGFloat CAPrefFloat(NSString *key, CGFloat def) {
     CFNumberRef n = (CFNumberRef)CFPreferencesCopyAppValue((__bridge CFStringRef)key,
@@ -124,9 +125,10 @@ static void CALoadPrefs(void) {
         g_pctY = (raw - 1) * 20;
     }
     g_pctRight = CAPrefFloat(@"pctRight", 0) != 0;
-    g_showTrack  = CAPrefFloat(@"showTrack", 0) != 0;
-    g_showDots   = CAPrefFloat(@"showDots", 0) != 0;
-    g_showCenter = CAPrefFloat(@"showCenter", 0) != 0;
+    g_ccOn     = CAPrefFloat(@"ccEnabled", 1) != 0;
+    g_showTrack  = CAPrefFloat(@"showTrack", 1) != 0;
+    g_showDots   = CAPrefFloat(@"showDots", 1) != 0;
+    g_showCenter = CAPrefFloat(@"showCenter", 1) != 0;
 }
 
 #pragma mark - 動態符號
@@ -432,6 +434,9 @@ static void CADressBattery(UIView *batt) {
 
     CATakeOver(batt, YES);
 
+    // 控制中心語境：不隱藏任何原生項（左側雙卡訊號列/熱點圖標等全部保留），只接管電量畫布
+    if (CAIsControlCenterContext(batt)) return;
+
     // 隱藏原生槽位（擴大到整個狀態欄樹；類名或 identifier 命中都藏）
     UIView *root = CAStatusRoot(batt);
     NSMutableArray *q = [NSMutableArray arrayWithObject:root];
@@ -623,8 +628,8 @@ static void CADrawWidget(UIView *self, CGContextRef ctx, CGRect b) {
 
 static void hook_batt_draw(UIView *self, SEL _cmd) {
     if (!g_enabled || !CAIsStatusContext(self)) { orig_batt_draw(self, _cmd); return; }
-    // 控制中心語境：完全放行原生（控制中心狀態欄恢復原狀）
-    if (CAIsControlCenterContext(self)) { orig_batt_draw(self, _cmd); return; }
+    // 控制中心語境：開關關閉時完全放行原生
+    if (CAIsControlCenterContext(self) && !g_ccOn) { orig_batt_draw(self, _cmd); return; }
     if (!g_ink) {
         UIColor *clock = CAScanClockColor(self);
         if (clock) g_ink = clock;

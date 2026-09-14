@@ -22,13 +22,13 @@
 			<key>key</key>
 			<string>langSimple</string>
 			<key>label</key>
-			<string>簡體中文（關閉＝繁體）</string>
+			<string>简体中文（关闭＝繁体）</string>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>開啟：控制中心右上角電量處顯示 Duo 圓形圖標（左側雙卡訊號列、熱點等保持原生不動）。關閉：控制中心狀態欄完全原生。</string>
+			<string>开启：控制中心右上角电量处显示 Duo 圆形图标（左侧双卡信号列、热点等保持原生不动）。关闭：控制中心状态栏完全原生。</string>
 			<key>label</key>
 			<string>控制中心狀態欄</string>
 		</dict>
@@ -50,7 +50,7 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>所有滑桿一鬆手一秒內自動生效，不需要 respring。關閉總開關立刻恢復系統原生圖標。</string>
+			<string>所有滑杆一松手一秒内自动生效，不需要 respring。关闭总开关立刻恢复系统原生图标。</string>
 			<key>label</key>
 			<string>啟用</string>
 		</dict>
@@ -66,15 +66,15 @@
 			<key>key</key>
 			<string>enabled</string>
 			<key>label</key>
-			<string>啟用 Duo 狀態欄</string>
+			<string>启用 Duo 状态栏</string>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>以 1 為標準值，數字越大整個圓（圓弧、訊號點、圓心圖標）一起放大。</string>
+			<string>以 1 为标准值，数字越大整个圆（圆弧、信号点、圆心图标）一起放大。</string>
 			<key>label</key>
-			<string>圖標大小</string>
+			<string>图标大小</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
@@ -88,7 +88,7 @@
 			<key>key</key>
 			<string>scale</string>
 			<key>label</key>
-			<string>整體大小　（1＝標準，2＝最大，0＝最小）</string>
+			<string>整体大小　（1＝标准，2＝最大，0＝最小）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -100,9 +100,9 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>以狀態欄右緣為基準絕對固定，調好後不會再被任何東西移動。</string>
+			<string>以状态栏右缘为基准绝对固定，调好后不会再被任何东西移动。</string>
 			<key>label</key>
-			<string>圖標左右位置</string>
+			<string>图标左右位置</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
@@ -116,7 +116,7 @@
 			<key>key</key>
 			<string>offsetX</string>
 			<key>label</key>
-			<string>左右位置　（1＝標準貼右緣；0＝向左 60pt；2＝向右 60pt）</string>
+			<string>左右位置　（1＝标准贴右缘；0＝向左 60pt；2＝向右 60pt）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -128,9 +128,9 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>負值方向＝向上。所有位置調整都即時生效。</string>
+			<string>数值越小越向上。所有位置调整都即时生效。</string>
 			<key>label</key>
-			<string>圖標上下位置</string>
+			<string>图标上下位置</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
@@ -144,7 +144,7 @@
 			<key>key</key>
 			<string>offsetY</string>
 			<key>label</key>
-			<string>上下位置　（1＝標準垂直居中；0＝向上 30pt；2＝向下 30pt）</string>
+			<string>上下位置　（1＝标准垂直居中；0＝向上 30pt；2＝向下 30pt）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -156,9 +156,9 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>電量弧的線條粗細。充電時只有這一圈弧變綠。</string>
+			<string>电量弧的线条粗细。充电时只有这一圈弧变绿。</string>
 			<key>label</key>
-			<string>圓環粗細</string>
+			<string>圆环粗细</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
@@ -172,7 +172,7 @@
 			<key>key</key>
 			<string>ringWidth</string>
 			<key>label</key>
-			<string>圓環線條粗細　（1＝標準）</string>
+			<string>圆环线条粗细　（1＝标准）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -184,9 +184,9 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>控制底部缺口大小：缺口越大圓弧越短。四個訊號點位於缺口內。</string>
+			<string>控制底部缺口大小：缺口越大圆弧越短。四个信号点位于缺口内。</string>
 			<key>label</key>
-			<string>圓弧長度</string>
+			<string>圆弧长度</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
@@ -200,7 +200,7 @@
 			<key>key</key>
 			<string>arcGap</string>
 			<key>label</key>
-			<string>底部缺口　（1＝標準 120°；0＝更長圓弧；2＝更短圓弧）</string>
+			<string>底部缺口　（1＝标准 120°；0＝更长圆弧；2＝更短圆弧）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -212,9 +212,9 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>圓心顯示 Wi-Fi／鏈環／5G 文字，此處微調它上下的位置。</string>
+			<string>圆心显示 Wi-Fi／链环／5G 文字，此处微调它上下的位置。</string>
 			<key>label</key>
-			<string>圓心圖標位置</string>
+			<string>圆心图标位置</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
@@ -228,7 +228,7 @@
 			<key>key</key>
 			<string>wifiOffset</string>
 			<key>label</key>
-			<string>圓心圖標上下　（1＝標準；0＝偏上；2＝偏下）</string>
+			<string>圆心图标上下　（1＝标准；0＝偏上；2＝偏下）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -240,9 +240,9 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>在圓環旁顯示當前電量百分比，顏色與圓環一致（充電時數字不變綠）。</string>
+			<string>在圆环旁显示当前电量百分比，颜色与圆环一致（充电时数字不变绿）。</string>
 			<key>label</key>
-			<string>電量數字</string>
+			<string>电量数字</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
@@ -256,7 +256,7 @@
 			<key>key</key>
 			<string>pctEnabled</string>
 			<key>label</key>
-			<string>顯示電量數字</string>
+			<string>显示电量数字</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
@@ -270,15 +270,15 @@
 			<key>key</key>
 			<string>pctRight</string>
 			<key>label</key>
-			<string>電量數字顯示在圓環右側（關閉＝左側）</string>
+			<string>电量数字显示在圆环右侧（关闭＝左侧）</string>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>電量數字的字號。</string>
+			<string>电量数字的字号。</string>
 			<key>label</key>
-			<string>數字大小</string>
+			<string>数字大小</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
@@ -292,7 +292,7 @@
 			<key>key</key>
 			<string>pctSize</string>
 			<key>label</key>
-			<string>數字大小　（1＝標準 10pt）</string>
+			<string>数字大小　（1＝标准 10pt）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -304,9 +304,9 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>數字相對圓環左/右側再微調。</string>
+			<string>数字相对圆环左/右侧再微调。</string>
 			<key>label</key>
-			<string>數字左右位置</string>
+			<string>数字左右位置</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
@@ -320,7 +320,7 @@
 			<key>key</key>
 			<string>pctOffsetX</string>
 			<key>label</key>
-			<string>數字左右　（1＝標準；0＝向左 40pt；2＝向右 40pt）</string>
+			<string>数字左右　（1＝标准；0＝向左 40pt；2＝向右 40pt）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -332,9 +332,9 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>數字上下微調。</string>
+			<string>数字上下微调。</string>
 			<key>label</key>
-			<string>數字上下位置</string>
+			<string>数字上下位置</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
@@ -348,7 +348,7 @@
 			<key>key</key>
 			<string>pctOffsetY</string>
 			<key>label</key>
-			<string>數字上下　（1＝標準；0＝向上 20pt；2＝向下 20pt）</string>
+			<string>数字上下　（1＝标准；0＝向上 20pt；2＝向下 20pt）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -360,9 +360,9 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>電量弧始終顯示；以下控制其他元件（任何情況都不會變綠）。</string>
+			<string>电量弧始终显示；以下控制其他元件（任何情况都不会变绿）。</string>
 			<key>label</key>
-			<string>顯示元件</string>
+			<string>显示元件</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
@@ -376,7 +376,7 @@
 			<key>key</key>
 			<string>showDots</string>
 			<key>label</key>
-			<string>顯示訊號四點（主卡訊號 0-4 格）</string>
+			<string>显示信号四点（主卡信号 0-4 格）</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
@@ -390,7 +390,7 @@
 			<key>key</key>
 			<string>showTrack</string>
 			<key>label</key>
-			<string>顯示圓環底槽（未充電部分的淺色軌道）</string>
+			<string>显示圆环底槽（未充电部分的浅色轨道）</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
@@ -404,15 +404,15 @@
 			<key>key</key>
 			<string>showCenter</string>
 			<key>label</key>
-			<string>顯示圓心圖標（Wi-Fi／5G／熱點）</string>
+			<string>显示圆心图标（Wi-Fi／5G／热点）</string>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>四點預設讀上排（主卡）。如果顯示的格數和主卡對不上，打開下面開關改讀下排副卡。</string>
+			<string>四点默认读上排（主卡）。如果显示的格数和主卡对不上，打开下面开关改读下排副卡。</string>
 			<key>label</key>
-			<string>雙卡訊號</string>
+			<string>双卡信号</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
@@ -426,15 +426,15 @@
 			<key>key</key>
 			<string>dualBottom</string>
 			<key>label</key>
-			<string>訊號點改讀下排副卡</string>
+			<string>信号点改读下排副卡</string>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>四個圓點的大小。</string>
+			<string>四个圆点的大小。</string>
 			<key>label</key>
-			<string>訊號點大小</string>
+			<string>信号点大小</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
@@ -448,7 +448,7 @@
 			<key>key</key>
 			<string>dotSize</string>
 			<key>label</key>
-			<string>圓點大小　（1＝標準）</string>
+			<string>圆点大小　（1＝标准）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -460,7 +460,7 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>提示：點滑桿右側的數字可以直接輸入精確數值。</string>
+			<string>提示：点滑杆右侧的数字可以直接输入精确数值。</string>
 			<key>label</key>
 			<string></string>
 		</dict>
@@ -468,9 +468,9 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>DuoStatusBar 1.9.0 · 作者：水甲嫩雞</string>
+			<string>DuoStatusBar 1.9.0 · 作者：水甲嫩鸡</string>
 			<key>label</key>
-			<string>關於</string>
+			<string>关于</string>
 		</dict>
 	</array>
 </dict>
