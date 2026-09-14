@@ -18,13 +18,13 @@ gpatch
 libmd
 [32m==>[0m [1mFetching downloads for: [32mldid[39m and [32mdpkg[39m[0m
 ✔︎ Bottle ldid (2.1.5_1)
-✔︎ Bottle Manifest gpatch (2.8)
 ✔︎ Bottle Manifest libplist (2.7.0)
+✔︎ Bottle Manifest gpatch (2.8)
 ✔︎ Bottle libplist (2.7.0)
-✔︎ Bottle gpatch (2.8)
-✔︎ Bottle dpkg (1.23.7)
 ✔︎ Bottle Manifest libmd (1.2.0)
+✔︎ Bottle gpatch (2.8)
 ✔︎ Bottle libmd (1.2.0)
+✔︎ Bottle dpkg (1.23.7)
 [32m==>[0m [1mInstalling ldid dependency: [32mlibplist[39m[0m
 [34m==>[0m [1mPouring libplist--2.7.0.arm64_sonoma.bottle.tar.gz[0m
 🍺  /opt/homebrew/Cellar/libplist/2.7.0: 32 files, 606.6KB
@@ -105,10 +105,13 @@ ld: warning: -multiply_defined is obsolete
 [0;32m==> [1;39mCompiling DuoStatusRootListController.m (arm64e)…[m
 [0;33m==> [1;39mLinking bundle DuoStatusPrefs (arm64e)…[m
 ld: warning: -multiply_defined is obsolete
-ld: framework 'Preferences' not found
-clang: [0;1;31merror: [0m[1mlinker command failed with exit code 1 (use -v to see invocation)[0m
-make[4]: *** [/Users/runner/work/Duo/Duo/.theos/obj/arm64e/DuoStatusPrefs.bundle/DuoStatusPrefs] Error 1
-make[3]: *** [/Users/runner/work/Duo/Duo/.theos/obj/arm64e/DuoStatusPrefs.bundle/DuoStatusPrefs] Error 2
-make[2]: *** [internal-bundle-all_] Error 2
-make[1]: *** [DuoStatusPrefs.all.bundle.variables] Error 2
-make: *** [internal-all] Error 2
+ld: warning: -undefined dynamic_lookup is deprecated on iOS
+ld: warning: -undefined dynamic_lookup is deprecated on iOS
+ld: warning: -undefined dynamic_lookup is deprecated on iOS
+[0;34m==> [1;39mGenerating debug symbols for DuoStatusPrefs…[m
+[0;34m==> [1;39mStripping DuoStatusPrefs (arm64e)…[m
+[0;34m==> [1;39mSigning DuoStatusPrefs…[m
+[1;31m> [1;3;39mMaking stage for tweak DuoStatusBar…[m
+[1;31m> [1;3;39mMaking stage in duostatusprefs…[m
+[1;31m> [1;3;39mMaking stage for bundle DuoStatusPrefs…[m
+dm.pl: building package `com.shuijia.duostatus:iphoneos-arm64' in `./packages/com.shuijia.duostatus_1.1.0_iphoneos-arm64.deb'
