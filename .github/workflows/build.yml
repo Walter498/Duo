@@ -7,7 +7,7 @@ on:
       - 'src/**'
       - 'Makefile'
       - 'control'
-      - 'prefs.plist'
+      - 'duostatusprefs/**'
       - 'DuoStatusBar.plist'
       - '.github/workflows/build.yml'
   workflow_dispatch:
@@ -30,14 +30,23 @@ jobs:
       - name: Build tweak package (arm64e)
         run: |
           export THEOS="$HOME/theos"
-          # macOS runner 用 Xcode 自帶最新 SDK 與原版 ld64，產出真 arm64e
-          make package FINALPACKAGE=1 TARGET=iphone:clang:latest:14.0
+          set -o pipefail
+          make package FINALPACKAGE=1 TARGET=iphone:clang:latest:14.0 2>&1 | tee /tmp/build.log
+
+      - name: Show build log on failure
+        if: failure()
+        run: |
+          echo "===== BUILD LOG TAIL ====="
+          tail -150 /tmp/build.log || true
+          echo "===== THEOS VERSION ====="
+          ls "$HOME/theos/sdks" || true
 
       - name: Inspect arch (must be arm64e)
-        run: |
-          find .theos/obj -name '*.dylib' -exec file {} \;
+        if: success()
+        run: find .theos/obj -name '*.dylib' -exec file {} \;
 
       - name: Commit deb back to repo
+        if: success()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -46,6 +55,7 @@ jobs:
           git push
 
       - name: Upload artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: DuoStatusBar-arm64e
