@@ -536,8 +536,10 @@ static void CADrawWidget(UIView *self, CGContextRef ctx, CGRect b) {
     }
     if (pct < 0) pct = 0; if (pct > 1) pct = 1;
 
-    UIColor *ink = charging ? [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0]
-                            : CAInk();
+    // 顏色規則：只有「電量弧」充電時變綠；其餘元素（底槽/訊號點/圓心圖標/電量數字）永遠保持原色
+    UIColor *fancy  = CAInk();
+    UIColor *arcInk = charging ? [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0]
+                               : CAInk();
 
     CGFloat gapHalf = M_PI * (g_arcGap / 2.0) / 180.0;
     CGFloat startA  = M_PI_2 + gapHalf;
@@ -547,7 +549,7 @@ static void CADrawWidget(UIView *self, CGContextRef ctx, CGRect b) {
     if (g_showTrack) {
         CGContextSetLineWidth(ctx, lw);
         CGContextSetLineCap(ctx, kCGLineCapRound);
-        CGContextSetStrokeColorWithColor(ctx, [ink colorWithAlphaComponent:0.22].CGColor);
+        CGContextSetStrokeColorWithColor(ctx, [fancy colorWithAlphaComponent:0.22].CGColor);
         CGContextAddArc(ctx, c.x, c.y, r, startA, startA + sweep, 0);
         CGContextStrokePath(ctx);
     }
@@ -556,7 +558,7 @@ static void CADrawWidget(UIView *self, CGContextRef ctx, CGRect b) {
     if (pct > 0.003) {
         CGContextSetLineWidth(ctx, lw);
         CGContextSetLineCap(ctx, kCGLineCapRound);
-        CGContextSetStrokeColorWithColor(ctx, ink.CGColor);
+        CGContextSetStrokeColorWithColor(ctx, arcInk.CGColor);
         CGContextAddArc(ctx, c.x, c.y, r, startA, startA + sweep * pct, 0);
         CGContextStrokePath(ctx);
     }
@@ -570,13 +572,13 @@ static void CADrawWidget(UIView *self, CGContextRef ctx, CGRect b) {
         CGFloat rightA = M_PI_2 - gapHalf + inset;
         if (leftA < rightA) { CGFloat t = leftA; leftA = rightA; rightA = t; }
         CGFloat dotR = g_dotSize * k;
-        UIColor *dim = [ink colorWithAlphaComponent:0.22];
+        UIColor *dim = [fancy colorWithAlphaComponent:0.22];
         for (int i = 0; i < dotCount; i++) {
             CGFloat t = (CGFloat)i / (dotCount - 1);
             CGFloat ang = leftA + (rightA - leftA) * t;
             CGPoint d = CGPointMake(c.x + cos(ang) * r, c.y + sin(ang) * r);
             BOOL on = (i < bars);
-            CGContextSetFillColorWithColor(ctx, (on ? ink : dim).CGColor);
+            CGContextSetFillColorWithColor(ctx, (on ? fancy : dim).CGColor);
             CGContextFillEllipseInRect(ctx, CGRectMake(d.x - dotR, d.y - dotR, dotR * 2, dotR * 2));
         }
     }
@@ -585,15 +587,15 @@ static void CADrawWidget(UIView *self, CGContextRef ctx, CGRect b) {
     if (g_showCenter) {
         CGPoint wc = CGPointMake(c.x, c.y + g_wifiOff * k);
         if (CAHotspotActive(self)) {
-            CADrawHotspot(ctx, wc, r / 9.5, ink);
+            CADrawHotspot(ctx, wc, r / 9.5, fancy);
         } else if (CAWiFiConnected()) {
-            CADrawWifi(ctx, wc, r / 9.5, ink);
+            CADrawWifi(ctx, wc, r / 9.5, fancy);
         } else {
             NSString *rat = CARATString();
             if (rat.length) {
                 NSDictionary *attrs = @{
                     NSFontAttributeName: [UIFont systemFontOfSize:7.6 * k weight:UIFontWeightBold],
-                    NSForegroundColorAttributeName: ink
+                    NSForegroundColorAttributeName: fancy
                 };
                 CGSize sz = [rat sizeWithAttributes:attrs];
                 [rat drawAtPoint:CGPointMake(wc.x - sz.width / 2.0, wc.y - sz.height / 2.0)
@@ -607,7 +609,7 @@ static void CADrawWidget(UIView *self, CGContextRef ctx, CGRect b) {
         NSString *txt = [NSString stringWithFormat:@"%d%%", (int)round(pct * 100)];
         UIFont *f = [UIFont monospacedDigitSystemFontOfSize:g_pctSize * g_scale
                                                      weight:UIFontWeightSemibold];
-        NSDictionary *attrs = @{NSFontAttributeName: f, NSForegroundColorAttributeName: ink};
+        NSDictionary *attrs = @{NSFontAttributeName: f, NSForegroundColorAttributeName: fancy};
         CGSize sz = [txt sizeWithAttributes:attrs];
         CGFloat x, y = c.y - sz.height / 2.0 + g_pctY * k;
         if (g_pctRight) {
