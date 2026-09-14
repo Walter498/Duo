@@ -1,0 +1,8 @@
+Package: com.shuijia.duostatus
+Name: DuoStatusBar
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Maintainer: shuijia
+Depends: mobilesubstrate | ellekit, firmware (>= 16.0)
+Section: Tweaks
+Description: iPhone Duo 風格狀態欄（電量圓環/Wi-Fi或4G-5G/訊號四點），支持設置內調節大小、位置與間距
