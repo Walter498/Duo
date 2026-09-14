@@ -23,39 +23,53 @@ jobs:
 
       - name: Install build tools
         run: |
-          brew install ldid dpkg
-          git clone --recursive --depth 1 https://github.com/theos/theos.git "$HOME/theos"
-          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+          {
+            echo "## env diagnostics"
+            sw_vers
+            xcodebuild -version
+            which make clang ldid dpkg || true
+            brew install ldid dpkg || echo "brew failed"
+            git clone --recursive --depth 1 https://github.com/theos/theos.git "$HOME/theos"
+            echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+            ls "$HOME/theos"
+          } > /tmp/build.log 2>&1
 
       - name: Build tweak package (arm64e)
+        id: build
+        continue-on-error: true
         run: |
           export THEOS="$HOME/theos"
           set -o pipefail
-          make package FINALPACKAGE=1 TARGET=iphone:clang:latest:14.0 2>&1 | tee /tmp/build.log
+          make package FINALPACKAGE=1 TARGET=iphone:clang:latest:14.0 >> /tmp/build.log 2>&1
 
-      - name: Show build log on failure
-        if: failure()
+      - name: Publish build log to repo
+        if: always()
         run: |
-          echo "===== BUILD LOG TAIL ====="
-          tail -150 /tmp/build.log || true
-          echo "===== THEOS VERSION ====="
-          ls "$HOME/theos/sdks" || true
+          cp /tmp/build.log ci-last-build.log 2>/dev/null || echo "no log" > ci-last-build.log
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci-last-build.log
+          git commit -m "CI: build log [skip ci]" || true
+          git pull --rebase -X theirs || true
+          git push || true
+
+      - name: Fail if build failed
+        if: steps.build.outcome == 'failure'
+        run: exit 1
 
       - name: Inspect arch (must be arm64e)
-        if: success()
+        if: steps.build.outcome == 'success'
         run: find .theos/obj -name '*.dylib' -exec file {} \;
 
       - name: Commit deb back to repo
-        if: success()
+        if: steps.build.outcome == 'success'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add packages/*.deb
           git commit -m "CI: build arm64e deb [skip ci]" || echo "nothing new"
-          git push
+          git push || true
 
       - name: Upload artifact
-        if: success()
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: DuoStatusBar-arm64e
