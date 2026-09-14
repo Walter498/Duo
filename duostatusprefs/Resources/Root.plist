@@ -28,7 +28,7 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>開啟：控制中心右上角電量處顯示 Duo 圓形圖標（左側雙卡訊號列、熱點等保持原生不動）。關閉：控制中心狀態欄完全原生。</string>
+			<string>右上角顯示 Duo 圓形圖標；左側雙卡訊號列、熱點等保持原生。關閉＝完全原生。默認位置與主畫面一致（過場不重影），也可用下面三項單獨微調。</string>
 			<key>label</key>
 			<string>控制中心狀態欄</string>
 		</dict>
@@ -45,6 +45,66 @@
 			<string>ccEnabled</string>
 			<key>label</key>
 			<string>控制中心顯示 Duo 圖標</string>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.shuijia.duostatus/preferencesChanged</string>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>default</key>
+			<real>1.0</real>
+			<key>defaults</key>
+			<string>com.shuijia.duostatus</string>
+			<key>key</key>
+			<string>ccScale</string>
+			<key>label</key>
+			<string>控制中心大小　（1＝與主畫面相同）</string>
+			<key>max</key>
+			<real>2.0</real>
+			<key>min</key>
+			<real>0.0</real>
+			<key>showValue</key>
+			<true/>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.shuijia.duostatus/preferencesChanged</string>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>default</key>
+			<real>1.0</real>
+			<key>defaults</key>
+			<string>com.shuijia.duostatus</string>
+			<key>key</key>
+			<string>ccOffsetX</string>
+			<key>label</key>
+			<string>控制中心左右位置　（1＝標準）</string>
+			<key>max</key>
+			<real>2.0</real>
+			<key>min</key>
+			<real>0.0</real>
+			<key>showValue</key>
+			<true/>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.shuijia.duostatus/preferencesChanged</string>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>default</key>
+			<real>1.0</real>
+			<key>defaults</key>
+			<string>com.shuijia.duostatus</string>
+			<key>key</key>
+			<string>ccOffsetY</string>
+			<key>label</key>
+			<string>控制中心上下位置　（1＝標準）</string>
+			<key>max</key>
+			<real>2.0</real>
+			<key>min</key>
+			<real>0.0</real>
+			<key>showValue</key>
+			<true/>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -116,7 +176,7 @@
 			<key>key</key>
 			<string>offsetX</string>
 			<key>label</key>
-			<string>左右位置　（1＝標準貼右緣；0＝向左 60pt；2＝向右 60pt）</string>
+			<string>左右位置　（1＝標準；0＝更左；2＝更右）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -128,7 +188,7 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>負值方向＝向上。所有位置調整都即時生效。</string>
+			<string>數字越小越向上。</string>
 			<key>label</key>
 			<string>圖標上下位置</string>
 		</dict>
@@ -144,7 +204,7 @@
 			<key>key</key>
 			<string>offsetY</string>
 			<key>label</key>
-			<string>上下位置　（1＝標準垂直居中；0＝向上 30pt；2＝向下 30pt）</string>
+			<string>上下位置　（1＝標準；0＝更上；2＝更下）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -200,7 +260,7 @@
 			<key>key</key>
 			<string>arcGap</string>
 			<key>label</key>
-			<string>底部缺口　（1＝標準 120°；0＝更長圓弧；2＝更短圓弧）</string>
+			<string>底部缺口　（1＝標準 120°）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -292,7 +352,7 @@
 			<key>key</key>
 			<string>pctSize</string>
 			<key>label</key>
-			<string>數字大小　（1＝標準 10pt）</string>
+			<string>數字大小　（1＝標準）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -320,7 +380,7 @@
 			<key>key</key>
 			<string>pctOffsetX</string>
 			<key>label</key>
-			<string>數字左右　（1＝標準；0＝向左 40pt；2＝向右 40pt）</string>
+			<string>數字左右　（1＝標準）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -348,7 +408,7 @@
 			<key>key</key>
 			<string>pctOffsetY</string>
 			<key>label</key>
-			<string>數字上下　（1＝標準；0＝向上 20pt；2＝向下 20pt）</string>
+			<string>數字上下　（1＝標準）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -460,17 +520,37 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>提示：點滑桿右側的數字可以直接輸入精確數值。</string>
+			<string>如果這個插件讓你的狀態欄變好看，歡迎請作者喝瓶水 🥤</string>
 			<key>label</key>
-			<string></string>
+			<string>贊助支持</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSStaticTextCell</string>
+			<key>cellClass</key>
+			<string>DuoQRCell</string>
+			<key>height</key>
+			<integer>170</integer>
+			<key>label</key>
+			<string>donate</string>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>DuoStatusBar 1.9.0 · 作者：水甲嫩雞</string>
+			<string>DuoStatusBar 1.10.0 · 作者：水甲嫩雞
+
+要是想找作者的話，不管是尋仇還是感謝，你只要進 wkk 大使的付費群都能找到我了😋</string>
 			<key>label</key>
 			<string>關於</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>提示：點滑桿右側的數字可以直接輸入精確數值。</string>
+			<key>label</key>
+			<string></string>
 		</dict>
 	</array>
 </dict>

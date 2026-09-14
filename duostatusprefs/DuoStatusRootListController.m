@@ -1,5 +1,6 @@
 #import <Preferences/PSListController.h>
 #import <Preferences/PSSpecifier.h>
+#import <Preferences/PSTableCell.h>
 #import <objc/runtime.h>
 
 #define kDomain CFSTR("com.shuijia.duostatus")
@@ -48,7 +49,8 @@
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         keys = @[@"scale", @"offsetX", @"offsetY", @"ringWidth", @"arcGap",
-                 @"wifiOffset", @"pctSize", @"pctOffsetX", @"pctOffsetY", @"dotSize"];
+                 @"wifiOffset", @"pctSize", @"pctOffsetX", @"pctOffsetY", @"dotSize",
+                 @"ccScale", @"ccOffsetX", @"ccOffsetY"];
     });
     return key && [keys containsObject:key];
 }
@@ -69,7 +71,6 @@
           forControlEvents:UIControlEventTouchUpInside];
             [cell.contentView addSubview:btn];
         }
-        // 覆蓋右側數值顯示區域
         CGFloat w = tv.bounds.size.width;
         btn.frame = CGRectMake(w - 92, 0, 92, cell.contentView.bounds.size.height);
         objc_setAssociatedObject(btn, "ca_spec", spec, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -112,12 +113,66 @@
         CFPreferencesSetAppValue((__bridge CFStringRef)key, num, kDomain);
         CFRelease(num);
         CFPreferencesAppSynchronize(kDomain);
-        // 通知 SpringBoard 立即生效
         CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                              kNotify, NULL, NULL, true);
         [self reloadSpecifier:spec animated:YES];
     }]];
     [self presentViewController:al animated:YES completion:nil];
+}
+
+@end
+
+#pragma mark - 贊助二維碼 Cell
+
+@interface DuoQRCell : PSTableCell
+@end
+
+@implementation DuoQRCell
+
+- (instancetype)initWithStyle:(UITableViewCellStyle)style
+              reuseIdentifier:(NSString *)reuseIdentifier
+                    specifier:(PSSpecifier *)specifier {
+    self = [super initWithStyle:style reuseIdentifier:reuseIdentifier specifier:specifier];
+    if (!self) return nil;
+    self.selectionStyle = UITableViewCellSelectionStyleNone;
+    self.backgroundColor = UIColor.clearColor;
+
+    UIImage *qr = [UIImage imageNamed:@"donate"
+                             inBundle:[NSBundle bundleForClass:self.class]
+        compatibleWithTraitCollection:nil];
+    UIImageView *iv = [[UIImageView alloc] initWithImage:qr];
+    iv.contentMode = UIViewContentModeScaleAspectFit;
+    iv.translatesAutoresizingMaskIntoConstraints = NO;
+    iv.layer.cornerRadius = 10;
+    iv.clipsToBounds = YES;
+    [self.contentView addSubview:iv];
+
+    UILabel *l1 = [[UILabel alloc] init];
+    l1.text = @"推薦使用支付寶";
+    l1.font = [UIFont boldSystemFontOfSize:17];
+    l1.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UILabel *l2 = [[UILabel alloc] init];
+    l2.text = @"支持信用卡｜花唄付款\n收款方：情懷合作社";
+    l2.font = [UIFont systemFontOfSize:13];
+    l2.textColor = UIColor.secondaryLabelColor;
+    l2.numberOfLines = 0;
+    l2.translatesAutoresizingMaskIntoConstraints = NO;
+
+    [self.contentView addSubview:l1];
+    [self.contentView addSubview:l2];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [iv.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:18],
+        [iv.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
+        [iv.widthAnchor constraintEqualToConstant:150],
+        [iv.heightAnchor constraintEqualToConstant:150],
+        [l1.leadingAnchor constraintEqualToAnchor:iv.trailingAnchor constant:16],
+        [l1.topAnchor constraintEqualToAnchor:iv.topAnchor constant:22],
+        [l2.leadingAnchor constraintEqualToAnchor:l1.leadingAnchor],
+        [l2.topAnchor constraintEqualToAnchor:l1.bottomAnchor constant:10],
+    ]];
+    return self;
 }
 
 @end

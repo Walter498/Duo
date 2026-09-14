@@ -8,9 +8,9 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>開啟「簡體中文」後整頁立即切換為簡體；關閉即回繁體。</string>
+			<string>开启「简体中文」后整页立即切换为简体；关闭即回繁体。</string>
 			<key>label</key>
-			<string>語言 / Language</string>
+			<string>语言 / Language</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -28,9 +28,9 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>开启：控制中心右上角电量处显示 Duo 圆形图标（左侧双卡信号列、热点等保持原生不动）。关闭：控制中心状态栏完全原生。</string>
+			<string>右上角显示 Duo 圆形图标；左侧双卡信号列、热点等保持原生。关闭＝完全原生。默认位置与主画面一致（过场不重影），也可用下面三项单独微调。</string>
 			<key>label</key>
-			<string>控制中心狀態欄</string>
+			<string>控制中心状态栏</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
@@ -44,7 +44,67 @@
 			<key>key</key>
 			<string>ccEnabled</string>
 			<key>label</key>
-			<string>控制中心顯示 Duo 圖標</string>
+			<string>控制中心显示 Duo 图标</string>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.shuijia.duostatus/preferencesChanged</string>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>default</key>
+			<real>1.0</real>
+			<key>defaults</key>
+			<string>com.shuijia.duostatus</string>
+			<key>key</key>
+			<string>ccScale</string>
+			<key>label</key>
+			<string>控制中心大小　（1＝与主画面相同）</string>
+			<key>max</key>
+			<real>2.0</real>
+			<key>min</key>
+			<real>0.0</real>
+			<key>showValue</key>
+			<true/>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.shuijia.duostatus/preferencesChanged</string>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>default</key>
+			<real>1.0</real>
+			<key>defaults</key>
+			<string>com.shuijia.duostatus</string>
+			<key>key</key>
+			<string>ccOffsetX</string>
+			<key>label</key>
+			<string>控制中心左右位置　（1＝标准）</string>
+			<key>max</key>
+			<real>2.0</real>
+			<key>min</key>
+			<real>0.0</real>
+			<key>showValue</key>
+			<true/>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.shuijia.duostatus/preferencesChanged</string>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>default</key>
+			<real>1.0</real>
+			<key>defaults</key>
+			<string>com.shuijia.duostatus</string>
+			<key>key</key>
+			<string>ccOffsetY</string>
+			<key>label</key>
+			<string>控制中心上下位置　（1＝标准）</string>
+			<key>max</key>
+			<real>2.0</real>
+			<key>min</key>
+			<real>0.0</real>
+			<key>showValue</key>
+			<true/>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -52,7 +112,7 @@
 			<key>footerText</key>
 			<string>所有滑杆一松手一秒内自动生效，不需要 respring。关闭总开关立刻恢复系统原生图标。</string>
 			<key>label</key>
-			<string>啟用</string>
+			<string>启用</string>
 		</dict>
 		<dict>
 			<key>PostNotification</key>
@@ -116,7 +176,7 @@
 			<key>key</key>
 			<string>offsetX</string>
 			<key>label</key>
-			<string>左右位置　（1＝标准贴右缘；0＝向左 60pt；2＝向右 60pt）</string>
+			<string>左右位置　（1＝标准；0＝更左；2＝更右）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -128,7 +188,7 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>数值越小越向上。所有位置调整都即时生效。</string>
+			<string>数字越小越向上。</string>
 			<key>label</key>
 			<string>图标上下位置</string>
 		</dict>
@@ -144,7 +204,7 @@
 			<key>key</key>
 			<string>offsetY</string>
 			<key>label</key>
-			<string>上下位置　（1＝标准垂直居中；0＝向上 30pt；2＝向下 30pt）</string>
+			<string>上下位置　（1＝标准；0＝更上；2＝更下）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -200,7 +260,7 @@
 			<key>key</key>
 			<string>arcGap</string>
 			<key>label</key>
-			<string>底部缺口　（1＝标准 120°；0＝更长圆弧；2＝更短圆弧）</string>
+			<string>底部缺口　（1＝标准 120°）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -292,7 +352,7 @@
 			<key>key</key>
 			<string>pctSize</string>
 			<key>label</key>
-			<string>数字大小　（1＝标准 10pt）</string>
+			<string>数字大小　（1＝标准）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -320,7 +380,7 @@
 			<key>key</key>
 			<string>pctOffsetX</string>
 			<key>label</key>
-			<string>数字左右　（1＝标准；0＝向左 40pt；2＝向右 40pt）</string>
+			<string>数字左右　（1＝标准）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -348,7 +408,7 @@
 			<key>key</key>
 			<string>pctOffsetY</string>
 			<key>label</key>
-			<string>数字上下　（1＝标准；0＝向上 20pt；2＝向下 20pt）</string>
+			<string>数字上下　（1＝标准）</string>
 			<key>max</key>
 			<real>2.0</real>
 			<key>min</key>
@@ -460,17 +520,37 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>提示：点滑杆右侧的数字可以直接输入精确数值。</string>
+			<string>如果这个插件让你的状态栏变好看，欢迎请作者喝瓶水 🥤</string>
 			<key>label</key>
-			<string></string>
+			<string>赞助支持</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSStaticTextCell</string>
+			<key>cellClass</key>
+			<string>DuoQRCell</string>
+			<key>height</key>
+			<integer>170</integer>
+			<key>label</key>
+			<string>donate</string>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>DuoStatusBar 1.9.0 · 作者：水甲嫩鸡</string>
+			<string>DuoStatusBar 1.10.0 · 作者：水甲嫩鸡
+
+要是想找作者的话，不管是寻仇还是感谢，你只要进 wkk 大使的付费群都能找到我了😋</string>
 			<key>label</key>
 			<string>关于</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>提示：点滑杆右侧的数字可以直接输入精确数值。</string>
+			<key>label</key>
+			<string></string>
 		</dict>
 	</array>
 </dict>

@@ -44,6 +44,10 @@ static CGFloat g_pctX     = 0.0;    // v=1 → 0
 static CGFloat g_pctY     = 0.0;    // v=1 → 0
 static BOOL    g_pctRight = NO;     // 數字顯示在圓環右側（預設左側）
 static BOOL    g_ccOn     = YES;    // 控制中心狀態欄：顯示 Duo 圖標（關閉＝完全原生）
+// 控制中心專用微調（默認 1＝與主畫面一致）
+static CGFloat g_ccScale  = 1.0;
+static CGFloat g_ccDx     = 0.0;
+static CGFloat g_ccDy     = 0.0;
 // 元件開關（v1.8 精簡模式：默認只畫電量弧）
 static BOOL    g_showTrack  = YES;  // 圓環底槽（v1.8.2 恢復默認顯示）
 static BOOL    g_showDots   = YES;  // 訊號點（v1.8.2 恢復默認顯示）
@@ -59,39 +63,59 @@ static CGFloat CAPrefFloat(NSString *key, CGFloat def) {
     return v;
 }
 
+
+// v1.10 基準遷移：滑桿一律歸 1；「1」的真實數值已改為用戶校準後的外觀
+static void CAMigrateV110(void) {
+    if (CAPrefFloat(@"v110", 0) != 0) return;
+    NSArray *keys = @[@"scale", @"offsetX", @"offsetY", @"ringWidth", @"dotSize", @"arcGap",
+                      @"wifiOffset", @"pctSize", @"pctOffsetX", @"pctOffsetY",
+                      @"ccScale", @"ccOffsetX", @"ccOffsetY"];
+    CGFloat one = 1.0;
+    CFNumberRef num = CFNumberCreate(NULL, kCFNumberCGFloatType, &one);
+    for (NSString *k in keys)
+        CFPreferencesSetAppValue((__bridge CFStringRef)k, num, CFSTR("com.shuijia.duostatus"));
+    CFRelease(num);
+    CFNumberRef flag = CFNumberCreate(NULL, kCFNumberCGFloatType, &one);
+    CFPreferencesSetAppValue(CFSTR("v110"), flag, CFSTR("com.shuijia.duostatus"));
+    CFRelease(flag);
+    CFPreferencesAppSynchronize(CFSTR("com.shuijia.duostatus"));
+}
+
 static void CALoadPrefs(void) {
+    CAMigrateV110();
     CFPreferencesAppSynchronize(CFSTR("com.shuijia.duostatus"));
 
     g_enabled = CAPrefFloat(@"enabled", 1) != 0;
 
-    // scale：舊範圍 0.5–1.8 直接兼容（新舊都是「直接值」語義）
-    g_scale = CAPrefFloat(@"scale", 1.0);
-    if (g_scale > 2.001) g_scale = 1.0;                 // 異常值保護
-    g_scale = MAX(0.4, MIN(2.2, g_scale));
-
-    // offsetX：新 = (v-1)*60；舊格式（±60）→ 換算
+    // scale：v=1 → 1.6（用戶校準），線性 ±1 → [0.6, 2.6]
+    {
+        CGFloat raw = CAPrefFloat(@"scale", 1);
+        if (raw < -0.001 || raw > 2.001) raw = 1;
+        g_scale = MAX(0.4, MIN(2.6, 0.6 + raw));
+    }
+    // offsetX：v=1 → -24pt（用戶校準）
     {
         CGFloat raw = CAPrefFloat(@"offsetX", 1);
-        if (raw < -0.001 || raw > 2.001) raw = 1 + MAX(-60.0, MIN(60.0, raw)) / 60.0;
-        g_dx = (raw - 1) * 60;
+        if (raw < -0.001 || raw > 2.001) raw = 1;
+        g_dx = MAX(-80, MIN(80, -24.0 + (raw - 1) * 60));
     }
-    // offsetY：新 = (v-1)*30
+    // offsetY：v=1 → +3pt（用戶校準）
     {
         CGFloat raw = CAPrefFloat(@"offsetY", 1);
-        if (raw < -0.001 || raw > 2.001) raw = 1 + MAX(-30.0, MIN(30.0, raw)) / 30.0;
-        g_dy = (raw - 1) * 30;
+        if (raw < -0.001 || raw > 2.001) raw = 1;
+        g_dy = MAX(-50, MIN(50, 3.0 + (raw - 1) * 30));
     }
-    // ringWidth：新 = 2.6*v
+    // ringWidth：v=1 → 1.95（用戶校準）
     {
         CGFloat raw = CAPrefFloat(@"ringWidth", 1);
-        if (raw < -0.001 || raw > 2.001) raw = MAX(0.4, MIN(2.2, raw / 2.6));
-        g_ringW = MAX(0.8, MIN(5.6, 2.6 * raw));
+        if (raw < -0.001 || raw > 2.001) raw = 1;
+        g_ringW = MAX(0.8, MIN(5.2, 1.95 * raw));
     }
-    // dotSize：新 = 1.1*v
+    // dotSize：v=1 → 1.155（用戶校準）
     {
         CGFloat raw = CAPrefFloat(@"dotSize", 1);
-        if (raw < -0.001 || raw > 2.001) raw = MAX(0.45, MIN(2.3, raw / 1.1));
-        g_dotSize = MAX(0.5, MIN(2.5, 1.1 * raw));
+        if (raw < -0.001 || raw > 2.001) raw = 1;
+        g_dotSize = MAX(0.5, MIN(2.5, 1.155 * raw));
     }
     // arcGap：新 = 120*v
     {
@@ -99,11 +123,11 @@ static void CALoadPrefs(void) {
         if (raw < -0.001 || raw > 2.001) raw = MAX(0.4, MIN(2.0, raw / 120.0));
         g_arcGap = MAX(60, MIN(170, 120.0 * raw));
     }
-    // wifiOffset：新 = -0.5 + (v-1)*4
+    // wifiOffset：v=1 → +0.3（用戶校準）
     {
         CGFloat raw = CAPrefFloat(@"wifiOffset", 1);
-        if (raw < -0.001 || raw > 2.001) raw = 1 + MAX(-4.0, MIN(4.0, raw)) / 4.0;
-        g_wifiOff = MAX(-4, MIN(4, -0.5 + (raw - 1) * 4));
+        if (raw < -0.001 || raw > 2.001) raw = 1;
+        g_wifiOff = MAX(-4, MIN(4, 0.3 + (raw - 1) * 4));
     }
     g_dualBot = CAPrefFloat(@"dualBottom", 0) != 0;
 
@@ -112,7 +136,7 @@ static void CALoadPrefs(void) {
     {
         CGFloat raw = CAPrefFloat(@"pctSize", 1);
         if (raw < -0.001 || raw > 2.001) raw = 1;
-        g_pctSize = MAX(5.0, MIN(22.0, 10.0 * raw));
+        g_pctSize = MAX(5.0, MIN(22.0, 8.0 * raw));   // v=1 → 8pt（用戶校準）
     }
     {
         CGFloat raw = CAPrefFloat(@"pctOffsetX", 1);
@@ -121,11 +145,26 @@ static void CALoadPrefs(void) {
     }
     {
         CGFloat raw = CAPrefFloat(@"pctOffsetY", 1);
-        if (raw < -0.001 || raw > 2.001) raw = 1 + MAX(-20.0, MIN(20.0, raw)) / 20.0;
-        g_pctY = (raw - 1) * 20;
+        if (raw < -0.001 || raw > 2.001) raw = 1;
+        g_pctY = 2.0 + (raw - 1) * 20;   // v=1 → +2pt（用戶校準）
     }
     g_pctRight = CAPrefFloat(@"pctRight", 0) != 0;
     g_ccOn     = CAPrefFloat(@"ccEnabled", 1) != 0;
+    {
+        CGFloat raw = CAPrefFloat(@"ccScale", 1);
+        if (raw < -0.001 || raw > 2.001) raw = 1;
+        g_ccScale = MAX(0.5, MIN(2.0, raw));
+    }
+    {
+        CGFloat raw = CAPrefFloat(@"ccOffsetX", 1);
+        if (raw < -0.001 || raw > 2.001) raw = 1;
+        g_ccDx = (raw - 1) * 60;
+    }
+    {
+        CGFloat raw = CAPrefFloat(@"ccOffsetY", 1);
+        if (raw < -0.001 || raw > 2.001) raw = 1;
+        g_ccDy = (raw - 1) * 30;
+    }
     g_showTrack  = CAPrefFloat(@"showTrack", 1) != 0;
     g_showDots   = CAPrefFloat(@"showDots", 1) != 0;
     g_showCenter = CAPrefFloat(@"showCenter", 1) != 0;
@@ -263,14 +302,43 @@ static UIView *CAStatusRoot(UIView *v) {
     return root;
 }
 
+// 熱點文本匹配（類名/標識/標籤，含中英多種寫法）
+static BOOL CAIsHotspotText(NSString *t) {
+    if (![t isKindOfClass:NSString.class] || t.length == 0) return NO;
+    if ([t rangeOfString:@"hotspot" options:NSCaseInsensitiveSearch].location != NSNotFound) return YES;
+    if ([t rangeOfString:@"PersonalHotspot"].location != NSNotFound) return YES;
+    if ([t containsString:@"热点"] || [t containsString:@"熱點"]) return YES;
+    if ([t containsString:@"个人热点"] || [t containsString:@"個人熱點"]) return YES;
+    return NO;
+}
+
+// 檢視任意視圖是否是「熱點原生控件」（檢查多個 KVC 鍵）
+static BOOL CAViewIsHotspot(UIView *v) {
+    if (CAIsHotspotText(NSStringFromClass(v.class))) return YES;
+    for (NSString *key in @[@"identifier", @"itemIdentifier", @"_identifier",
+                            @"identifierString", @"accessibilityIdentifier", @"accessibilityLabel"]) {
+        @try {
+            id val = [v valueForKey:key];
+            if (CAIsHotspotText(val)) return YES;
+        } @catch (id e) {}
+    }
+    // 有些版本把 item 掛在視圖上
+    @try {
+        id item = [v valueForKey:@"item"];
+        if (item && CAIsHotspotText(NSStringFromClass([item class]))) return YES;
+    } @catch (id e) {}
+    return NO;
+}
+
 // 隱藏匹配：必須是狀態欄自己的控件（類名含 StatusBar）才隱藏，
 // 且不碰控制中心模組（那裡的 SIM 訊號條要保留）
-static BOOL CAHideMatch(NSString *cn) {
+static BOOL CAHideMatch(UIView *v) {
+    NSString *cn = NSStringFromClass(v.class);
+    if (CAIsHotspotText(cn)) return YES;    // 熱點控件不管叫什麼都藏
     if ([cn rangeOfString:@"StatusBar" options:NSCaseInsensitiveSearch].location == NSNotFound)
         return NO;
     return [cn rangeOfString:@"Wifi" options:NSCaseInsensitiveSearch].location != NSNotFound ||
            [cn rangeOfString:@"Cellular" options:NSCaseInsensitiveSearch].location != NSNotFound ||
-           [cn rangeOfString:@"Hotspot" options:NSCaseInsensitiveSearch].location != NSNotFound ||
            [cn rangeOfString:@"NetworkType" options:NSCaseInsensitiveSearch].location != NSNotFound ||
            [cn rangeOfString:@"Signal" options:NSCaseInsensitiveSearch].location != NSNotFound;
 }
@@ -300,19 +368,7 @@ static BOOL CAHotspotActive(UIView *batt) {
         UIView *v = q.firstObject;
         [q removeObjectAtIndex:0];
         if (v != batt && !v.hidden && v.alpha > 0.01) {
-            NSString *cn = NSStringFromClass(v.class);
-            if ([cn rangeOfString:@"Hotspot" options:NSCaseInsensitiveSearch].location != NSNotFound)
-                return YES;
-            // iOS 17 的指示器視圖類名可能是通用的，但 identifier / 標籤裡含 hotspot
-            for (NSString *key in @[@"identifier", @"itemIdentifier", @"_identifier",
-                                    @"accessibilityIdentifier", @"accessibilityLabel"]) {
-                @try {
-                    id val = [v valueForKey:key];
-                    if ([val isKindOfClass:NSString.class] &&
-                        [val rangeOfString:@"hotspot" options:NSCaseInsensitiveSearch].location != NSNotFound)
-                        return YES;
-                } @catch (id e) {}
-            }
+            if (CAViewIsHotspot(v)) return YES;
         }
         for (UIView *s in v.subviews) [q addObject:s];
     }
@@ -389,11 +445,17 @@ static void CADressBattery(UIView *batt) {
 
     // 只關閉「狀態欄內部」視圖的裁剪與遮罩（絕不碰窗口/更高層，
     // 否則會破壞系統的圓角遮罩：開 App 動畫、後台卡片圓角變方形就是這個原因）
+    // 控制中心語境：額外允許走 CC/CoverSheet 類祖先（修 CC 裡的隱形邊框），同樣遇 Window 即停
+    BOOL inCC = CAIsControlCenterContext(batt);
     UIView *anc = batt;
     while (anc) {
         NSString *cn = NSStringFromClass(anc.class);
         if ([cn rangeOfString:@"Window" options:NSCaseInsensitiveSearch].location != NSNotFound) break;
-        if (anc != batt && [cn rangeOfString:@"StatusBar" options:NSCaseInsensitiveSearch].location == NSNotFound) break;
+        BOOL isSB = [cn rangeOfString:@"StatusBar" options:NSCaseInsensitiveSearch].location != NSNotFound;
+        BOOL isCC = [cn rangeOfString:@"ControlCenter" options:NSCaseInsensitiveSearch].location != NSNotFound ||
+                    [cn rangeOfString:@"CCUI" options:NSCaseInsensitiveSearch].location != NSNotFound ||
+                    [cn rangeOfString:@"CoverSheet" options:NSCaseInsensitiveSearch].location != NSNotFound;
+        if (anc != batt && !isSB && !(inCC && isCC)) break;
         if (anc.clipsToBounds) anc.clipsToBounds = NO;
         anc.layer.masksToBounds = NO;
         anc = anc.superview;
@@ -402,9 +464,14 @@ static void CADressBattery(UIView *batt) {
     batt.layer.opaque = NO;
     batt.layer.backgroundColor = NULL;
 
-    CGFloat S = 22.0 * g_scale;
+    // 控制中心可用獨立縮放/偏移（ccScale/ccOffsetX/ccOffsetY，默認 1 與主畫面一致）
+    CGFloat effScale = g_scale * (inCC ? g_ccScale : 1.0);
+    CGFloat effDx = g_dx + (inCC ? g_ccDx : 0.0);
+    CGFloat effDy = g_dy + (inCC ? g_ccDy : 0.0);
+
+    CGFloat S = 22.0 * effScale;
     // 電量數字的預留寬度（畫布向右擴展，圓環仍貼右緣）
-    CGFloat fontPt = g_pctSize * g_scale;
+    CGFloat fontPt = g_pctSize * effScale;
     CGFloat tw = g_pctOn ? (fontPt * 3.1 + 4.0) : 0.0;
     CGFloat canvasW = S + tw;
 
@@ -415,12 +482,21 @@ static void CADressBattery(UIView *batt) {
 
     CGPoint want;
     if (container && container.bounds.size.width > 100) {
+        // ★ 以「螢幕(視窗)座標」錨定右上角：主畫面與控制中心的圖標會落在同一位置，
+        //   上/下拉控制中心過場時不會再出現兩個圖標錯位疊影
         CGFloat W = container.bounds.size.width;
         CGFloat H = container.bounds.size.height;
         if (H < 20) H = 54.0;
-        want = CGPointMake(W - 8.0 - canvasW / 2.0 + g_dx, H / 2.0 + g_dy);
+        CGPoint anchor = CGPointMake(W - 8.0 - canvasW / 2.0 + effDx, H / 2.0 + effDy);
+        UIView *win = batt.window;
+        if (win) {
+            CGPoint inWin = [container convertPoint:anchor toView:nil];
+            inWin.x = win.bounds.size.width - 8.0 - canvasW / 2.0 + effDx;
+            anchor = [container convertPoint:inWin fromView:nil];
+        }
+        want = anchor;
     } else {
-        want = CGPointMake(info.naturalCenter.x + g_dx, info.naturalCenter.y + g_dy);
+        want = CGPointMake(info.naturalCenter.x + effDx, info.naturalCenter.y + effDy);
     }
 
     BOOL sizeDiff = fabs(batt.bounds.size.width - canvasW) > 0.5 ||
@@ -445,16 +521,7 @@ static void CADressBattery(UIView *batt) {
         UIView *v = q.firstObject;
         [q removeObjectAtIndex:0];
         if (v != batt) {
-            BOOL match = CAHideMatch(NSStringFromClass(v.class));
-            if (!match) {
-                @try {
-                    id ident = [v valueForKey:@"identifier"];
-                    if ([ident isKindOfClass:NSString.class] &&
-                        [ident rangeOfString:@"hotspot" options:NSCaseInsensitiveSearch].location != NSNotFound)
-                        match = YES;
-                } @catch (id e) {}
-            }
-            if (match && v.alpha > 0.01) v.alpha = 0;
+            if (CAHideMatch(v) && v.alpha > 0.01) v.alpha = 0;
         }
         for (UIView *s in v.subviews) [q addObject:s];
     }
