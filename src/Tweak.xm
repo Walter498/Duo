@@ -1,16 +1,14 @@
 /*
- * DuoStatusBar —— iPhone Duo 風格狀態欄 v1.4
+ * DuoStatusBar —— iPhone Duo 風格狀態欄 v1.5
  * iOS 16-17 / RootHide rootless / SpringBoard
  *
- * v1.4 修復：
- *   1. 每個電池控件實例獨立接管（含控制中心/鎖屏語境）：
- *      drawRect 內自我接管——就地變正方、清黑底、藏鄰居，不再依賴單一前景視圖 hook
- *   2. 個人熱點：偵測原生熱點控件（類名含 Hotspot）→ 隱藏它，圓心改畫「鏈環」圖標
- *   3. 訊號讀取：優先讀原生訊號控件 KVC（單卡直接讀；雙卡讀上排/下排可選），
- *      CoreTelephony 僅作兜底 → 修「明明有訊號顯示沒訊號」
- *   4. 圓弧長度可調（缺口角度 60°–160°，預設 110°），四個訊號點往內縮 18°，
- *      不再被圓環兩端覆蓋
- *   5. 錨點改為「每個實例首次出現時的自然中心」，樂園島動畫期間不再錯位
+ * v1.5 修復：
+ *   1. 設定「即時生效」根治：每秒定時器主動重讀偏好，不依賴 Darwin 通知；
+ *      之前通知鏈路不可靠導致「左右/上下/大小拖了沒反應，要 respring 才生效」
+ *   2. 移除「隱形邊框」：關閉畫布所有祖先視圖的 clipsToBounds，放大/移動不再被裁掉
+ *   3. 黑底閃現：hook setBackgroundColor:/setOpaque:，系統想刷黑底直接攔掉
+ *   4. CC 訊號讀不到：訊號檢索擴大到整個狀態欄視圖樹；原生讀不到時用 CoreTelephony 補
+ *   5. 設定面板：所有滑桿 0–2、默認顯示 1（內部實際默認值不變），逐項詳細說明
  */
 
 #import <UIKit/UIKit.h>
@@ -24,16 +22,20 @@
 #import <CoreTelephony/CTTelephonyNetworkInfo.h>
 
 #pragma mark - 偏好（suite: com.shuijia.duostatus）
+/*
+ * 新設定格式：所有滑桿 0–2，1 = 標準（內部實際默認值不變）
+ * 舊值自動換算（偵測到超出 0–2 範圍的舊格式時）
+ */
 
 static BOOL    g_enabled  = YES;
-static CGFloat g_scale    = 1.0;
-static CGFloat g_dx       = 0.0;
-static CGFloat g_dy       = 0.0;
-static CGFloat g_ringW    = 2.6;
-static CGFloat g_dotSize  = 1.1;
-static CGFloat g_wifiOff  = -0.5;
-static CGFloat g_arcGap   = 120.0;   // 缺口角度（圓環 = 360 - gap）
-static BOOL    g_dualBot  = NO;      // 雙卡時主卡是否在下排
+static CGFloat g_scale    = 1.0;    // v=1 → 1.0
+static CGFloat g_dx       = 0.0;    // v=1 → 0
+static CGFloat g_dy       = 0.0;    // v=1 → 0
+static CGFloat g_ringW    = 2.6;    // v=1 → 2.6
+static CGFloat g_dotSize  = 1.1;    // v=1 → 1.1
+static CGFloat g_wifiOff  = -0.5;   // v=1 → -0.5
+static CGFloat g_arcGap   = 120.0;  // v=1 → 120°
+static BOOL    g_dualBot  = NO;
 
 static CGFloat CAPrefFloat(NSString *key, CGFloat def) {
     CFNumberRef n = (CFNumberRef)CFPreferencesCopyAppValue((__bridge CFStringRef)key,
@@ -47,14 +49,50 @@ static CGFloat CAPrefFloat(NSString *key, CGFloat def) {
 
 static void CALoadPrefs(void) {
     CFPreferencesAppSynchronize(CFSTR("com.shuijia.duostatus"));
+
     g_enabled = CAPrefFloat(@"enabled", 1) != 0;
-    g_scale   = MAX(0.5, MIN(1.8, CAPrefFloat(@"scale", 1.0)));
-    g_dx      = CAPrefFloat(@"offsetX", 0);
-    g_dy      = CAPrefFloat(@"offsetY", 0);
-    g_ringW   = MAX(1.0, MIN(4.5, CAPrefFloat(@"ringWidth", 2.6)));
-    g_dotSize = MAX(0.8, MIN(3.0, CAPrefFloat(@"dotSize", 1.1)));
-    g_wifiOff = MAX(-4, MIN(4, CAPrefFloat(@"wifiOffset", -0.5)));
-    g_arcGap  = MAX(60, MIN(160, CAPrefFloat(@"arcGap", 120)));
+
+    // scale：舊範圍 0.5–1.8 直接兼容（新舊都是「直接值」語義）
+    g_scale = CAPrefFloat(@"scale", 1.0);
+    if (g_scale > 2.001) g_scale = 1.0;                 // 異常值保護
+    g_scale = MAX(0.4, MIN(2.2, g_scale));
+
+    // offsetX：新 = (v-1)*60；舊格式（±60）→ 換算
+    {
+        CGFloat raw = CAPrefFloat(@"offsetX", 1);
+        if (raw < -0.001 || raw > 2.001) raw = 1 + MAX(-60.0, MIN(60.0, raw)) / 60.0;
+        g_dx = (raw - 1) * 60;
+    }
+    // offsetY：新 = (v-1)*30
+    {
+        CGFloat raw = CAPrefFloat(@"offsetY", 1);
+        if (raw < -0.001 || raw > 2.001) raw = 1 + MAX(-30.0, MIN(30.0, raw)) / 30.0;
+        g_dy = (raw - 1) * 30;
+    }
+    // ringWidth：新 = 2.6*v
+    {
+        CGFloat raw = CAPrefFloat(@"ringWidth", 1);
+        if (raw < -0.001 || raw > 2.001) raw = MAX(0.4, MIN(2.2, raw / 2.6));
+        g_ringW = MAX(0.8, MIN(5.6, 2.6 * raw));
+    }
+    // dotSize：新 = 1.1*v
+    {
+        CGFloat raw = CAPrefFloat(@"dotSize", 1);
+        if (raw < -0.001 || raw > 2.001) raw = MAX(0.45, MIN(2.3, raw / 1.1));
+        g_dotSize = MAX(0.5, MIN(2.5, 1.1 * raw));
+    }
+    // arcGap：新 = 120*v
+    {
+        CGFloat raw = CAPrefFloat(@"arcGap", 1);
+        if (raw < -0.001 || raw > 2.001) raw = MAX(0.4, MIN(2.0, raw / 120.0));
+        g_arcGap = MAX(60, MIN(170, 120.0 * raw));
+    }
+    // wifiOffset：新 = -0.5 + (v-1)*4
+    {
+        CGFloat raw = CAPrefFloat(@"wifiOffset", 1);
+        if (raw < -0.001 || raw > 2.001) raw = 1 + MAX(-4.0, MIN(4.0, raw)) / 4.0;
+        g_wifiOff = MAX(-4, MIN(4, -0.5 + (raw - 1) * 4));
+    }
     g_dualBot = CAPrefFloat(@"dualBottom", 0) != 0;
 }
 
@@ -63,12 +101,12 @@ static void CALoadPrefs(void) {
 typedef int (*CTGetSignalStrength_t)(int *, int *);
 static CTGetSignalStrength_t pCTGetSignalStrength;
 
-static int CACTBars(void) {   // CoreTelephony 兜底（默認線路＝主卡）
+static int CACTBars(void) {
     if (!pCTGetSignalStrength) return -1;
     int a = 0, b = 0;
     pCTGetSignalStrength(&a, &b);
-    if (a >= 0 && a <= 4 && b < 0) return a;              // a=格數 b=dBm
-    if (a < 0 && b >= 0 && b <= 4) return b;              // a=dBm b=格數
+    if (a >= 0 && a <= 4 && b < 0) return a;
+    if (a < 0 && b >= 0 && b <= 4) return b;
     int dbm = 0;
     if (a < -30 && a > -140) dbm = a;
     else if (b < -30 && b > -140) dbm = b;
@@ -135,19 +173,18 @@ static UIColor *CAScanClockColor(UIView *anyStatusView) {
     return nil;
 }
 
-#pragma mark - 每個電池實例的獨立狀態
+#pragma mark - 每個電池實例
 
 @interface CABattInfo : NSObject
-@property (nonatomic, assign) CGPoint naturalCenter;   // 首次出現時的自然中心
+@property (nonatomic, assign) CGPoint naturalCenter;
 @property (nonatomic, assign) BOOL captured;
 @property (nonatomic, assign) CGPoint appliedCenter;
-@property (nonatomic, assign) CGFloat appliedSide;
 @end
 @implementation CABattInfo
 @end
 
 static const char kCABattInfoKey = 0;
-static NSHashTable<UIView *> *g_battViews;   // 所有接管的電池控件（弱引用）
+static NSHashTable<UIView *> *g_battViews;
 
 #pragma mark - 工具
 
@@ -167,14 +204,17 @@ static BOOL CAIsStatusContext(UIView *v) {
     return NO;
 }
 
-static BOOL CAClassNameIs(UIView *v, NSString *needle) {
-    return [NSStringFromClass(v.class) rangeOfString:needle
-                                             options:NSCaseInsensitiveSearch].location != NSNotFound;
+// 走到狀態欄語境的根（最上層含 StatusBar 的祖先）
+static UIView *CAStatusRoot(UIView *v) {
+    UIView *root = v;
+    while (root.superview &&
+           ([NSStringFromClass(root.superview.class) containsString:@"StatusBar"] ||
+            [NSStringFromClass(root.class) containsString:@"StatusBar"]))
+        root = root.superview;
+    return root;
 }
 
-// 隐藏性質的鄰居（Wi-Fi/蜂窩/熱點等原生槽位，內容已由我們繪製）
-static BOOL CAShouldHideSibling(UIView *v) {
-    NSString *cn = NSStringFromClass(v.class);
+static BOOL CAHideMatch(NSString *cn) {
     return [cn rangeOfString:@"Wifi" options:NSCaseInsensitiveSearch].location != NSNotFound ||
            [cn rangeOfString:@"Cellular" options:NSCaseInsensitiveSearch].location != NSNotFound ||
            [cn rangeOfString:@"Hotspot" options:NSCaseInsensitiveSearch].location != NSNotFound ||
@@ -182,82 +222,7 @@ static BOOL CAShouldHideSibling(UIView *v) {
            [cn rangeOfString:@"Signal" options:NSCaseInsensitiveSearch].location != NSNotFound;
 }
 
-// 熱點控件是否存在且可見
-static BOOL CAHotspotActive(UIView *batt) {
-    UIView *container = batt.superview;
-    if (!container) return NO;
-    for (UIView *sib in container.subviews) {
-        if (sib == batt) continue;
-        if (CAClassNameIs(sib, @"Hotspot") && !sib.hidden && sib.alpha > 0.01) return YES;
-    }
-    // 有時熱點控件在更深層
-    NSMutableArray *q = [NSMutableArray arrayWithObject:container];
-    int guard = 0;
-    while (q.count && guard++ < 120) {
-        UIView *v = q.firstObject;
-        [q removeObjectAtIndex:0];
-        if (v != batt && CAClassNameIs(v, @"Hotspot") && !v.hidden && v.alpha > 0.01) return YES;
-        for (UIView *s in v.subviews) [q addObject:s];
-    }
-    return NO;
-}
-
-// 找到原生訊號控件並讀主卡格數
-static int CANativeBars(UIView *batt) {
-    UIView *container = batt.superview;
-    if (!container) return -1;
-    NSMutableArray *cands = [NSMutableArray array];
-    NSMutableArray *q = [NSMutableArray arrayWithObject:container];
-    int guard = 0;
-    while (q.count && guard++ < 200) {
-        UIView *v = q.firstObject;
-        [q removeObjectAtIndex:0];
-        if (v != batt && [NSStringFromClass(v.class) containsString:@"SignalView"]) [cands addObject:v];
-        for (UIView *s in v.subviews) [q addObject:s];
-    }
-    BOOL dual = NO;
-    for (UIView *v in cands)
-        if ([NSStringFromClass(v.class) containsString:@"Dual"]) dual = YES;
-
-    if (!dual) {
-        for (UIView *v in cands) {
-            NSInteger b = -1;
-            @try { b = [[v valueForKey:@"numberOfActiveBars"] integerValue]; } @catch (id e) {}
-            if (b >= 0) return (int)MIN(MAX(b, 0), 4);
-        }
-        return -1;
-    }
-    // 雙卡：優先 topSignalView / 首個子視圖；可切換下排
-    for (UIView *dualView in cands) {
-        if (![NSStringFromClass(dualView.class) containsString:@"Dual"]) continue;
-        UIView *row = nil;
-        @try { row = [dualView valueForKey:@"topSignalView"]; } @catch (id e) {}
-        if (!row && dualView.subviews.count) {
-            row = g_dualBot ? dualView.subviews.lastObject : dualView.subviews.firstObject;
-        } else if (row && g_dualBot) {
-            for (UIView *s in dualView.subviews)
-                if (s != row && [NSStringFromClass(s.class) containsString:@"SignalView"]) { row = s; break; }
-        }
-        if (row) {
-            NSInteger b = -1;
-            @try { b = [[row valueForKey:@"numberOfActiveBars"] integerValue]; } @catch (id e) {}
-            if (b < 0) {
-                @try { b = [[dualView valueForKey:@"numberOfActiveBars"] integerValue]; } @catch (id e) {}
-            }
-            if (b >= 0) return (int)MIN(MAX(b, 0), 4);
-        }
-    }
-    return -1;
-}
-
-static int CAPrimaryBars(UIView *batt) {
-    int b = CANativeBars(batt);
-    if (b >= 0) return b;
-    int ct = CACTBars();
-    return ct >= 0 ? ct : 0;
-}
-
-#pragma mark - 接管（清黑底 + 藏原生內容與鄰居 + 就地變正方）
+#pragma mark - 接管
 
 static void CATakeOver(UIView *v, BOOL yes) {
     if (yes) {
@@ -273,6 +238,80 @@ static void CATakeOver(UIView *v, BOOL yes) {
     }
 }
 
+// 熱點 / 訊號：在整個狀態欄樹裡找
+static BOOL CAHotspotActive(UIView *batt) {
+    UIView *root = CAStatusRoot(batt);
+    NSMutableArray *q = [NSMutableArray arrayWithObject:root];
+    int guard = 0;
+    while (q.count && guard++ < 800) {
+        UIView *v = q.firstObject;
+        [q removeObjectAtIndex:0];
+        if (v != batt) {
+            NSString *cn = NSStringFromClass(v.class);
+            if ([cn rangeOfString:@"Hotspot" options:NSCaseInsensitiveSearch].location != NSNotFound &&
+                !v.hidden && v.alpha > 0.01) return YES;
+        }
+        for (UIView *s in v.subviews) [q addObject:s];
+    }
+    return NO;
+}
+
+static int CANativeBars(UIView *batt) {
+    UIView *root = CAStatusRoot(batt);
+    NSMutableArray *cands = [NSMutableArray array];
+    NSMutableArray *q = [NSMutableArray arrayWithObject:root];
+    int guard = 0;
+    while (q.count && guard++ < 800) {
+        UIView *v = q.firstObject;
+        [q removeObjectAtIndex:0];
+        if (v != batt && [NSStringFromClass(v.class) containsString:@"SignalView"])
+            [cands addObject:v];
+        for (UIView *s in v.subviews) [q addObject:s];
+    }
+
+    UIView *dual = nil, *single = nil;
+    for (UIView *v in cands) {
+        if ([NSStringFromClass(v.class) containsString:@"Dual"]) { dual = v; break; }
+    }
+    if (!dual)
+        for (UIView *v in cands)
+            if (![NSStringFromClass(v.class) containsString:@"Dual"]) { single = v; break; }
+
+    if (dual) {
+        UIView *row = nil;
+        @try { row = [dual valueForKey:@"topSignalView"]; } @catch (id e) {}
+        if (g_dualBot || !row) {
+            UIView *other = nil;
+            for (UIView *s in dual.subviews)
+                if ([NSStringFromClass(s.class) containsString:@"SignalView"] && s != row) { other = s; break; }
+            if (other) row = other;
+            else if (!row && dual.subviews.count) row = dual.subviews.firstObject;
+        }
+        if (row) {
+            NSInteger b = -1;
+            @try { b = [[row valueForKey:@"numberOfActiveBars"] integerValue]; } @catch (id e) {}
+            if (b >= 0) return (int)MIN(MAX(b, 0), 4);
+        }
+        NSInteger b2 = -1;
+        @try { b2 = [[dual valueForKey:@"numberOfActiveBars"] integerValue]; } @catch (id e) {}
+        if (b2 >= 0) return (int)MIN(MAX(b2, 0), 4);
+    }
+    if (single) {
+        NSInteger b = -1;
+        @try { b = [[single valueForKey:@"numberOfActiveBars"] integerValue]; } @catch (id e) {}
+        if (b >= 0) return (int)MIN(MAX(b, 0), 4);
+    }
+    return -1;
+}
+
+static int CAPrimaryBars(UIView *batt) {
+    int native = CANativeBars(batt);
+    int ct = CACTBars();
+    if (native <= 0 && ct > 0) return ct;          // 原生讀不到有效值 → CT 補
+    if (native >= 0) return native;
+    return ct >= 0 ? ct : 0;
+}
+
 static void CADressBattery(UIView *batt) {
     CABattInfo *info = objc_getAssociatedObject(batt, &kCABattInfoKey);
     if (!info) {
@@ -283,10 +322,14 @@ static void CADressBattery(UIView *batt) {
         [g_battViews addObject:batt];
     }
 
-    CGFloat S = 22.0 * g_scale;
+    // 關掉所有祖先的裁剪 → 修「隱形邊框」：放大/移動不再被裁掉
+    UIView *anc = batt;
+    for (int i = 0; i < 12 && anc; i++) {
+        if (anc.clipsToBounds) anc.clipsToBounds = NO;
+        anc = anc.superview;
+    }
 
-    // 絕對錨定：以狀態欄容器「右緣」為基準 + 偏好偏移，
-    // 與任何其他元素（樂園島/熱點/其他圖標）完全無關 → 位置永久固定
+    CGFloat S = 22.0 * g_scale;
     UIView *container = batt.superview;
     CGPoint want;
     if (container && container.bounds.size.width > 40) {
@@ -304,13 +347,20 @@ static void CADressBattery(UIView *batt) {
         if (sizeDiff) batt.bounds = CGRectMake(0, 0, S, S);
         batt.center = want;
         info.appliedCenter = want;
-        info.appliedSide = S;
     }
 
     CATakeOver(batt, YES);
-    for (UIView *sib in batt.superview.subviews) {
-        if (sib == batt) continue;
-        if (CAShouldHideSibling(sib) && sib.alpha > 0.01) sib.alpha = 0;
+
+    // 隱藏原生槽位（擴大到整個狀態欄樹）
+    UIView *root = CAStatusRoot(batt);
+    NSMutableArray *q = [NSMutableArray arrayWithObject:root];
+    int guard = 0;
+    while (q.count && guard++ < 800) {
+        UIView *v = q.firstObject;
+        [q removeObjectAtIndex:0];
+        if (v != batt && CAHideMatch(NSStringFromClass(v.class)) && v.alpha > 0.01)
+            v.alpha = 0;
+        for (UIView *s in v.subviews) [q addObject:s];
     }
 }
 
@@ -319,6 +369,10 @@ static void (*orig_batt_draw)(UIView *, SEL);
 static void hook_batt_draw(UIView *self, SEL _cmd);
 static void (*orig_applyStyle)(UIView *, SEL, id);
 static void hook_applyStyle(UIView *self, SEL _cmd, id attrs);
+static void (*orig_setBg)(UIView *, SEL, UIColor *);
+static void hook_setBg(UIView *self, SEL _cmd, UIColor *color);
+static void (*orig_setOpaque)(UIView *, SEL, BOOL);
+static void hook_setOpaque(UIView *self, SEL _cmd, BOOL opaque);
 
 #pragma mark - 繪製部件
 
@@ -327,8 +381,8 @@ static void CADrawWifi(CGContextRef ctx, CGPoint c, CGFloat s, UIColor *ink) {
     CGContextSetLineCap(ctx, kCGLineCapRound);
     CGContextSetStrokeColorWithColor(ctx, ink.CGColor);
     CGPoint base = CGPointMake(c.x, c.y + 2.3 * s);
-    const CGFloat radii[3] = {1.5, 3.6, 5.7};        // 按參考圖比例：寬:高 ≈ 1:0.82
-    const CGFloat halfA = 0.26 * M_PI;               // 各弧 ±46.8°
+    const CGFloat radii[3] = {1.5, 3.6, 5.7};
+    const CGFloat halfA = 0.26 * M_PI;
     for (int i = 0; i < 3; i++) {
         CGContextAddArc(ctx, base.x, base.y, radii[i] * s, -M_PI_2 - halfA, -M_PI_2 + halfA, 0);
         CGContextStrokePath(ctx);
@@ -337,7 +391,6 @@ static void CADrawWifi(CGContextRef ctx, CGPoint c, CGFloat s, UIColor *ink) {
     CGContextFillEllipseInRect(ctx, CGRectMake(base.x - 1.1 * s, base.y - 1.1 * s, 2.2 * s, 2.2 * s));
 }
 
-// 個人熱點「鏈環」圖標：兩個互鎖的圓角環
 static void CADrawHotspot(CGContextRef ctx, CGPoint c, CGFloat s, UIColor *ink) {
     CGContextSetLineWidth(ctx, 1.3 * s);
     CGContextSetStrokeColorWithColor(ctx, ink.CGColor);
@@ -359,7 +412,7 @@ static void CADrawHotspot(CGContextRef ctx, CGPoint c, CGFloat s, UIColor *ink) 
     CGContextRestoreGState(ctx);
 }
 
-#pragma mark - 主繪製：一個整圓
+#pragma mark - 主繪製
 
 static void CADrawWidget(UIView *self, CGContextRef ctx, CGRect b) {
     CGFloat S = MIN(CGRectGetWidth(b), CGRectGetHeight(b));
@@ -396,13 +449,12 @@ static void CADrawWidget(UIView *self, CGContextRef ctx, CGRect b) {
         CGContextStrokePath(ctx);
     }
 
-    // 訊號四點（缺口內，兩端各內縮 28°，與參考圖一致）
     int bars = CAPrimaryBars(self);
     const int dotCount = 4;
     CGFloat inset = M_PI * 28.0 / 180.0;
     CGFloat leftA  = M_PI_2 + gapHalf - inset;
     CGFloat rightA = M_PI_2 - gapHalf + inset;
-    if (leftA < rightA) { CGFloat t = leftA; leftA = rightA; rightA = t; }   // 防呆
+    if (leftA < rightA) { CGFloat t = leftA; leftA = rightA; rightA = t; }
     CGFloat dotR = g_dotSize * k;
     UIColor *dim = [ink colorWithAlphaComponent:0.22];
     for (int i = 0; i < dotCount; i++) {
@@ -414,7 +466,6 @@ static void CADrawWidget(UIView *self, CGContextRef ctx, CGRect b) {
         CGContextFillEllipseInRect(ctx, CGRectMake(d.x - dotR, d.y - dotR, dotR * 2, dotR * 2));
     }
 
-    // 圓心：熱點鏈環 > (Wi-Fi 符號 / 制式文字)
     CGPoint wc = CGPointMake(c.x, c.y + g_wifiOff * k);
     if (CAHotspotActive(self)) {
         CADrawHotspot(ctx, wc, r / 9.5, ink);
@@ -440,8 +491,24 @@ static void hook_batt_draw(UIView *self, SEL _cmd) {
         UIColor *clock = CAScanClockColor(self);
         if (clock) g_ink = clock;
     }
-    CADressBattery(self);   // 就地接管：變正方 + 清黑底 + 藏鄰居
+    CADressBattery(self);
     CADrawWidget(self, UIGraphicsGetCurrentContext(), self.bounds);
+}
+
+#pragma mark - 攔截系統刷黑底
+
+static void hook_setBg(UIView *self, SEL _cmd, UIColor *color) {
+    if (g_enabled && [self isKindOfClass:ClassOrNil(@"STUIStatusBarStaticBatteryView")]) {
+        color = UIColor.clearColor;   // 黑底閃現根治：畫布永遠透明
+    }
+    if (orig_setBg) orig_setBg(self, _cmd, color);
+}
+
+static void hook_setOpaque(UIView *self, SEL _cmd, BOOL opaque) {
+    if (g_enabled && [self isKindOfClass:ClassOrNil(@"STUIStatusBarStaticBatteryView")]) {
+        opaque = NO;
+    }
+    if (orig_setOpaque) orig_setOpaque(self, _cmd, opaque);
 }
 
 #pragma mark - 樣式捕獲
@@ -461,31 +528,40 @@ static void hook_applyStyle(UIView *self, SEL _cmd, id attrs) {
     }
 }
 
-#pragma mark - 1 秒定時刷新
-static void CAScheduleRefresh(void) {
-    [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) {
-        if (!g_enabled) return;
-        for (UIView *v in g_battViews.allObjects) {
-            CADressBattery(v);          // 每秒重新釘回固定位置，任何東西都移不動
-            [v setNeedsDisplay];
-        }
-    }];
-}
+#pragma mark - 每秒心跳：重讀偏好 + 重新釘位 + 重繪
+static void CATick(void) {
+    CGFloat os_ = g_scale, ox = g_dx, oy = g_dy, ow = g_ringW,
+            od = g_dotSize, og = g_arcGap, of_ = g_wifiOff, ob = g_dualBot;
+    BOOL oe = g_enabled;
 
-#pragma mark - 偏好變更
-static void CAReloadAll(void) {
     CALoadPrefs();
+
+    BOOL changed = (os_ != g_scale) || (ox != g_dx) || (oy != g_dy) || (ow != g_ringW) ||
+                   (od != g_dotSize) || (og != g_arcGap) || (of_ != g_wifiOff) ||
+                   (ob != g_dualBot) || (oe != g_enabled);
+
     for (UIView *v in g_battViews.allObjects) {
-        if (!g_enabled) CATakeOver(v, NO);
+        if (!g_enabled) {
+            if (changed) CATakeOver(v, NO);
+            else CATakeOver(v, NO);
+            [v setNeedsDisplay];
+            continue;
+        }
+        CADressBattery(v);       // 每秒釘位，任何東西都移不動
         [v setNeedsDisplay];
     }
 }
 
 #pragma mark - Hook 安裝
+
 static void CAInstallHooks(void) {
     Class bt = ClassOrNil(@"STUIStatusBarStaticBatteryView");
 
-    if (bt) MSHookMessageEx(bt, @selector(drawRect:), (IMP)hook_batt_draw, (IMP *)&orig_batt_draw);
+    if (bt) {
+        MSHookMessageEx(bt, @selector(drawRect:), (IMP)hook_batt_draw, (IMP *)&orig_batt_draw);
+        MSHookMessageEx(bt, @selector(setBackgroundColor:), (IMP)hook_setBg, (IMP *)&orig_setBg);
+        MSHookMessageEx(bt, @selector(setOpaque:), (IMP)hook_setOpaque, (IMP *)&orig_setOpaque);
+    }
 
     SEL styleSel = NSSelectorFromString(@"applyStyleAttributes:");
     if (bt && class_getInstanceMethod(bt, styleSel))
@@ -504,11 +580,9 @@ __attribute__((constructor)) static void ca_init(void) {
     [[NSNotificationCenter defaultCenter]
         addObserverForName:UIApplicationDidFinishLaunchingNotification
                     object:nil queue:[NSOperationQueue mainQueue]
-                usingBlock:^(NSNotification *n) { CAScheduleRefresh(); }];
-
-    CFNotificationCenterAddObserver(
-        CFNotificationCenterGetDarwinNotifyCenter(), NULL,
-        (CFNotificationCallback)CAReloadAll,
-        CFSTR("com.shuijia.duostatus/preferencesChanged"), NULL,
-        (CFNotificationSuspensionBehavior)0);
+                usingBlock:^(NSNotification *n) {
+        [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) {
+            CATick();
+        }];
+    }];
 }
