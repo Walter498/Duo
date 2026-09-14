@@ -20,6 +20,7 @@
 #import <net/if.h>
 #import <arpa/inet.h>
 #import <CoreTelephony/CTTelephonyNetworkInfo.h>
+#include "hotspot_icon.h"
 
 #pragma mark - 偏好（suite: com.shuijia.duostatus）
 /*
@@ -41,6 +42,7 @@ static BOOL    g_pctOn    = YES;
 static CGFloat g_pctSize  = 10.0;   // v=1 → 10pt
 static CGFloat g_pctX     = 0.0;    // v=1 → 0
 static CGFloat g_pctY     = 0.0;    // v=1 → 0
+static BOOL    g_pctRight = NO;     // 數字顯示在圓環右側（預設左側）
 
 static CGFloat CAPrefFloat(NSString *key, CGFloat def) {
     CFNumberRef n = (CFNumberRef)CFPreferencesCopyAppValue((__bridge CFStringRef)key,
@@ -117,6 +119,7 @@ static void CALoadPrefs(void) {
         if (raw < -0.001 || raw > 2.001) raw = 1 + MAX(-20.0, MIN(20.0, raw)) / 20.0;
         g_pctY = (raw - 1) * 20;
     }
+    g_pctRight = CAPrefFloat(@"pctRight", 0) != 0;
 }
 
 #pragma mark - 動態符號
@@ -227,17 +230,23 @@ static BOOL CAIsStatusContext(UIView *v) {
     return NO;
 }
 
-// 走到狀態欄語境的根（最上層含 StatusBar 的祖先）
+// 走到狀態欄語境的根（最上層含 StatusBar 的祖先；絕不爬進 Window，避免波及控制中心/桌面其他視圖）
 static UIView *CAStatusRoot(UIView *v) {
     UIView *root = v;
-    while (root.superview &&
-           ([NSStringFromClass(root.superview.class) containsString:@"StatusBar"] ||
-            [NSStringFromClass(root.class) containsString:@"StatusBar"]))
-        root = root.superview;
+    while (root.superview) {
+        NSString *pcn = NSStringFromClass(root.superview.class);
+        if ([pcn containsString:@"Window"] || [pcn containsString:@"Scene"]) break;
+        if ([pcn containsString:@"StatusBar"]) { root = root.superview; continue; }
+        break;
+    }
     return root;
 }
 
+// 隱藏匹配：必須是狀態欄自己的控件（類名含 StatusBar）才隱藏，
+// 且不碰控制中心模組（那裡的 SIM 訊號條要保留）
 static BOOL CAHideMatch(NSString *cn) {
+    if ([cn rangeOfString:@"StatusBar" options:NSCaseInsensitiveSearch].location == NSNotFound)
+        return NO;
     return [cn rangeOfString:@"Wifi" options:NSCaseInsensitiveSearch].location != NSNotFound ||
            [cn rangeOfString:@"Cellular" options:NSCaseInsensitiveSearch].location != NSNotFound ||
            [cn rangeOfString:@"Hotspot" options:NSCaseInsensitiveSearch].location != NSNotFound ||
@@ -261,9 +270,9 @@ static void CATakeOver(UIView *v, BOOL yes) {
     }
 }
 
-// 熱點 / 訊號：在整個狀態欄樹裡找（類名 + identifier/標籤 多重匹配）
+// 熱點：在整個窗口範圍內找（類名 + identifier/標籤 多重匹配）
 static BOOL CAHotspotActive(UIView *batt) {
-    UIView *root = CAStatusRoot(batt);
+    UIView *root = batt.window ?: CAStatusRoot(batt);
     NSMutableArray *q = [NSMutableArray arrayWithObject:root];
     int guard = 0;
     while (q.count && guard++ < 800) {
@@ -290,14 +299,16 @@ static BOOL CAHotspotActive(UIView *batt) {
 }
 
 static int CANativeBars(UIView *batt) {
-    UIView *root = CAStatusRoot(batt);
+    // 在整個窗口範圍內找原生訊號控件（只認狀態欄自己的控件，控制中心模組不受影響）
+    UIView *root = batt.window ?: CAStatusRoot(batt);
     NSMutableArray *cands = [NSMutableArray array];
     NSMutableArray *q = [NSMutableArray arrayWithObject:root];
     int guard = 0;
-    while (q.count && guard++ < 800) {
+    while (q.count && guard++ < 1500) {
         UIView *v = q.firstObject;
         [q removeObjectAtIndex:0];
-        if (v != batt && [NSStringFromClass(v.class) containsString:@"SignalView"])
+        NSString *cn = NSStringFromClass(v.class);
+        if (v != batt && [cn containsString:@"StatusBar"] && [cn containsString:@"SignalView"])
             [cands addObject:v];
         for (UIView *s in v.subviews) [q addObject:s];
     }
@@ -355,12 +366,16 @@ static void CADressBattery(UIView *batt) {
         [g_battViews addObject:batt];
     }
 
-    // 關掉所有祖先的裁剪 → 修「隱形邊框」：放大/移動不再被裁掉
+    // 關掉所有祖先的裁剪與遮罩；直接操作 CALayer 級別（繞過任何 UIView 層攔截的漏網之魚）
     UIView *anc = batt;
-    for (int i = 0; i < 12 && anc; i++) {
+    for (int i = 0; i < 25 && anc; i++) {
         if (anc.clipsToBounds) anc.clipsToBounds = NO;
+        anc.layer.masksToBounds = NO;
         anc = anc.superview;
     }
+    // 畫布自身：強制 CALayer 透明（對抗系統可能直接改 layer 的 opaque/背景）
+    batt.layer.opaque = NO;
+    batt.layer.backgroundColor = NULL;
 
     CGFloat S = 22.0 * g_scale;
     // 電量數字的預留寬度（畫布向右擴展，圓環仍貼右緣）
@@ -444,24 +459,32 @@ static void CADrawWifi(CGContextRef ctx, CGPoint c, CGFloat s, UIColor *ink) {
     CGContextFillEllipseInRect(ctx, CGRectMake(base.x - 0.95 * s, base.y - 0.95 * s, 1.9 * s, 1.9 * s));
 }
 
+// 個人熱點「鏈環」圖標：使用嵌入的素材遮罩（灰度 alpha），以當前墨水色填充
+static CGImageRef g_hotspotImg = NULL;
+static CGImageRef CAHotspotImage(void) {
+    if (g_hotspotImg) return g_hotspotImg;
+    CGColorSpaceRef cs = CGColorSpaceCreateDeviceGray();
+    CGDataProviderRef dp = CGDataProviderCreateWithData(NULL, kHotspotMask,
+                                                        (size_t)kHotspotW * kHotspotH, NULL);
+    if (cs && dp) {
+        g_hotspotImg = CGImageCreate(kHotspotW, kHotspotH, 8, 8, kHotspotW, cs,
+                                     kCGImageAlphaNone, dp, NULL, false, kCGRenderingIntentDefault);
+    }
+    if (dp) CGDataProviderRelease(dp);
+    if (cs) CGColorSpaceRelease(cs);
+    return g_hotspotImg;
+}
+
 static void CADrawHotspot(CGContextRef ctx, CGPoint c, CGFloat s, UIColor *ink) {
-    CGContextSetLineWidth(ctx, 1.3 * s);
-    CGContextSetStrokeColorWithColor(ctx, ink.CGColor);
+    CGImageRef img = CAHotspotImage();
+    if (!img) return;
+    CGFloat w = 21.0 * s;                       // 顯示寬（素材比例 132:78）
+    CGFloat h = w * (CGFloat)kHotspotH / (CGFloat)kHotspotW;
+    CGRect ir = CGRectMake(c.x - w / 2.0, c.y - h / 2.0, w, h);
     CGContextSaveGState(ctx);
-    CGContextTranslateCTM(ctx, c.x, c.y);
-    CGContextRotateCTM(ctx, -0.30);
-    UIBezierPath *l = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(-4.0 * s, -1.75 * s, 5.6 * s, 3.5 * s)
-                                                cornerRadius:1.75 * s];
-    CGContextAddPath(ctx, l.CGPath);
-    CGContextStrokePath(ctx);
-    CGContextRestoreGState(ctx);
-    CGContextSaveGState(ctx);
-    CGContextTranslateCTM(ctx, c.x + 1.9 * s, c.y);
-    CGContextRotateCTM(ctx, 0.30);
-    UIBezierPath *r = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(-1.6 * s, -1.75 * s, 5.6 * s, 3.5 * s)
-                                                cornerRadius:1.75 * s];
-    CGContextAddPath(ctx, r.CGPath);
-    CGContextStrokePath(ctx);
+    CGContextClipToMask(ctx, ir, img);
+    CGContextSetFillColorWithColor(ctx, ink.CGColor);
+    CGContextFillRect(ctx, ir);
     CGContextRestoreGState(ctx);
 }
 
@@ -471,10 +494,12 @@ static void CADrawWidget(UIView *self, CGContextRef ctx, CGRect b) {
     CGFloat S = MIN(b.size.height, b.size.width);   // 圓的直徑＝畫布高度
     CGFloat k = S / 22.0;
     if (k <= 0) k = 1;
-    CGContextClearRect(ctx, b);
+    // 不再使用 CGContextClearRect：在不透明渲染路徑下「清屏」會變黑，這裡完全不依賴清屏
 
-    // 圓環居中於畫布「右側 S 方形」區域；左側空間留給電量數字
-    CGPoint c = CGPointMake(CGRectGetMaxX(b) - S / 2.0, CGRectGetMidY(b));
+    // 圓環位置：數字在左側時圓環靠畫布右緣；數字在右側時圓環靠畫布左緣
+    CGPoint c = CGPointMake(g_pctRight ? (CGRectGetMinX(b) + S / 2.0)
+                                       : (CGRectGetMaxX(b) - S / 2.0),
+                            CGRectGetMidY(b));
     CGFloat lw = g_ringW * k;
     CGFloat r = S / 2.0 - lw / 2.0 - 0.5 * k;
 
@@ -542,15 +567,19 @@ static void CADrawWidget(UIView *self, CGContextRef ctx, CGRect b) {
         }
     }
 
-    // 電量數字（圓環左側，可開關/調大小/調位置）
+    // 電量數字（可開關/調大小/調位置；可選在圓環左側或右側）
     if (g_pctOn) {
         NSString *txt = [NSString stringWithFormat:@"%d%%", (int)round(pct * 100)];
         UIFont *f = [UIFont monospacedDigitSystemFontOfSize:g_pctSize * g_scale
                                                      weight:UIFontWeightSemibold];
         NSDictionary *attrs = @{NSFontAttributeName: f, NSForegroundColorAttributeName: ink};
         CGSize sz = [txt sizeWithAttributes:attrs];
-        CGFloat x = c.x - S / 2.0 - 4.0 - sz.width + g_pctX * k;   // 貼在圓環左側
-        CGFloat y = c.y - sz.height / 2.0 + g_pctY * k;
+        CGFloat x, y = c.y - sz.height / 2.0 + g_pctY * k;
+        if (g_pctRight) {
+            x = c.x + S / 2.0 + 4.0 + g_pctX * k;              // 圓環右側
+        } else {
+            x = c.x - S / 2.0 - 4.0 - sz.width + g_pctX * k;   // 圓環左側（預設）
+        }
         [txt drawAtPoint:CGPointMake(x, y) withAttributes:attrs];
     }
 }
