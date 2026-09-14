@@ -6,7 +6,7 @@ THEOS_PACKAGE_SCHEME = rootless
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = DuoStatusBar
-DuoStatusBar_FILES = Tweak.xm
+DuoStatusBar_FILES = src/Tweak.xm
 DuoStatusBar_CFLAGS = -fobjc-arc
 DuoStatusBar_LIBRARIES = substrate
 
