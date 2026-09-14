@@ -1,0 +1,52 @@
+name: Build DuoStatusBar (arm64e)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'Makefile'
+      - 'control'
+      - 'prefs.plist'
+      - 'DuoStatusBar.plist'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          brew install ldid dpkg
+          git clone --recursive --depth 1 https://github.com/theos/theos.git "$HOME/theos"
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+
+      - name: Build tweak package (arm64e)
+        run: |
+          export THEOS="$HOME/theos"
+          # macOS runner 用 Xcode 自帶最新 SDK 與原版 ld64，產出真 arm64e
+          make package FINALPACKAGE=1 TARGET=iphone:clang:latest:14.0
+
+      - name: Inspect arch (must be arm64e)
+        run: |
+          find .theos/obj -name '*.dylib' -exec file {} \;
+
+      - name: Commit deb back to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/*.deb
+          git commit -m "CI: build arm64e deb [skip ci]" || echo "nothing new"
+          git push
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DuoStatusBar-arm64e
+          path: packages/*.deb
