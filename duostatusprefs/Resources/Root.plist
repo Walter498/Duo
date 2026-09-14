@@ -184,7 +184,7 @@
 			<key>cell</key>
 			<string>PSSwitchCell</string>
 			<key>default</key>
-			<true/>
+			<false/>
 			<key>defaults</key>
 			<string>com.shuijia.duostatus</string>
 			<key>key</key>
@@ -270,6 +270,56 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
+			<string>下面四個開關控制是否顯示各元件：訊號點、圓環底槽、圓心圖標（Wi-Fi/5G/熱點）、電量數字。電量弧本身始終顯示。</string>
+			<key>label</key>
+			<string>元件開關（精簡模式：默認只保留電量弧）</string>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.shuijia.duostatus/preferencesChanged</string>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<false/>
+			<key>defaults</key>
+			<string>com.shuijia.duostatus</string>
+			<key>key</key>
+			<string>showDots</string>
+			<key>label</key>
+			<string>顯示訊號四點</string>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.shuijia.duostatus/preferencesChanged</string>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<false/>
+			<key>defaults</key>
+			<string>com.shuijia.duostatus</string>
+			<key>key</key>
+			<string>showTrack</string>
+			<key>label</key>
+			<string>顯示圓環底槽（未充電部分的淺色底）</string>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.shuijia.duostatus/preferencesChanged</string>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<false/>
+			<key>defaults</key>
+			<string>com.shuijia.duostatus</string>
+			<key>key</key>
+			<string>showCenter</string>
+			<key>label</key>
+			<string>顯示圓心圖標（Wi-Fi／5G／熱點圖標）</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
 			<string>圓心自動顯示：連 Wi-Fi → Wi-Fi 符號；連個人熱點 → 鏈環圖標；都沒有 → 5G／4G 文字。下方四個圓點＝主卡訊號（0–4 格）。</string>
 			<key>label</key>
 			<string>圓心圖標與訊號點</string>
@@ -312,7 +362,7 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>DuoStatusBar 1.7.0 · iPhone Duo 風格狀態欄 · 源碼與更新：github.com/Walter498/Duo</string>
+			<string>DuoStatusBar 1.8.0 · iPhone Duo 風格狀態欄 · 源碼與更新：github.com/Walter498/Duo</string>
 			<key>label</key>
 			<string>關於</string>
 		</dict>

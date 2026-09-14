@@ -43,6 +43,10 @@ static CGFloat g_pctSize  = 10.0;   // v=1 → 10pt
 static CGFloat g_pctX     = 0.0;    // v=1 → 0
 static CGFloat g_pctY     = 0.0;    // v=1 → 0
 static BOOL    g_pctRight = NO;     // 數字顯示在圓環右側（預設左側）
+// 元件開關（v1.8 精簡模式：默認只畫電量弧）
+static BOOL    g_showTrack  = NO;   // 圓環底槽
+static BOOL    g_showDots   = NO;   // 訊號點
+static BOOL    g_showCenter = NO;   // 圓心 Wi-Fi/5G/熱點
 
 static CGFloat CAPrefFloat(NSString *key, CGFloat def) {
     CFNumberRef n = (CFNumberRef)CFPreferencesCopyAppValue((__bridge CFStringRef)key,
@@ -120,6 +124,9 @@ static void CALoadPrefs(void) {
         g_pctY = (raw - 1) * 20;
     }
     g_pctRight = CAPrefFloat(@"pctRight", 0) != 0;
+    g_showTrack  = CAPrefFloat(@"showTrack", 0) != 0;
+    g_showDots   = CAPrefFloat(@"showDots", 0) != 0;
+    g_showCenter = CAPrefFloat(@"showCenter", 0) != 0;
 }
 
 #pragma mark - 動態符號
@@ -225,6 +232,18 @@ static BOOL CAIsStatusContext(UIView *v) {
     while (r) {
         NSString *cn = NSStringFromClass(r.class);
         if ([cn containsString:@"StatusBar"]) return YES;
+        r = r.nextResponder;
+    }
+    return NO;
+}
+
+// 控制中心語境（CC 狀態欄恢復原生，不接管）
+static BOOL CAIsControlCenterContext(UIView *v) {
+    UIResponder *r = v;
+    while (r) {
+        NSString *cn = NSStringFromClass(r.class);
+        if ([cn containsString:@"ControlCenter"] || [cn containsString:@"CCUI"])
+            return YES;
         r = r.nextResponder;
     }
     return NO;
@@ -366,9 +385,13 @@ static void CADressBattery(UIView *batt) {
         [g_battViews addObject:batt];
     }
 
-    // 關掉所有祖先的裁剪與遮罩；直接操作 CALayer 級別（繞過任何 UIView 層攔截的漏網之魚）
+    // 只關閉「狀態欄內部」視圖的裁剪與遮罩（絕不碰窗口/更高層，
+    // 否則會破壞系統的圓角遮罩：開 App 動畫、後台卡片圓角變方形就是這個原因）
     UIView *anc = batt;
-    for (int i = 0; i < 25 && anc; i++) {
+    while (anc) {
+        NSString *cn = NSStringFromClass(anc.class);
+        if ([cn rangeOfString:@"Window" options:NSCaseInsensitiveSearch].location != NSNotFound) break;
+        if (anc != batt && [cn rangeOfString:@"StatusBar" options:NSCaseInsensitiveSearch].location == NSNotFound) break;
         if (anc.clipsToBounds) anc.clipsToBounds = NO;
         anc.layer.masksToBounds = NO;
         anc = anc.superview;
@@ -520,50 +543,62 @@ static void CADrawWidget(UIView *self, CGContextRef ctx, CGRect b) {
     CGFloat startA  = M_PI_2 + gapHalf;
     CGFloat sweep   = 2 * M_PI - 2 * gapHalf;
 
-    CGContextSetLineWidth(ctx, lw);
-    CGContextSetLineCap(ctx, kCGLineCapRound);
-    CGContextSetStrokeColorWithColor(ctx, [ink colorWithAlphaComponent:0.22].CGColor);
-    CGContextAddArc(ctx, c.x, c.y, r, startA, startA + sweep, 0);
-    CGContextStrokePath(ctx);
+    // 圓環底槽（默認關閉）
+    if (g_showTrack) {
+        CGContextSetLineWidth(ctx, lw);
+        CGContextSetLineCap(ctx, kCGLineCapRound);
+        CGContextSetStrokeColorWithColor(ctx, [ink colorWithAlphaComponent:0.22].CGColor);
+        CGContextAddArc(ctx, c.x, c.y, r, startA, startA + sweep, 0);
+        CGContextStrokePath(ctx);
+    }
 
+    // 電量弧（核心元素：白色 / 充電綠色）
     if (pct > 0.003) {
+        CGContextSetLineWidth(ctx, lw);
+        CGContextSetLineCap(ctx, kCGLineCapRound);
         CGContextSetStrokeColorWithColor(ctx, ink.CGColor);
         CGContextAddArc(ctx, c.x, c.y, r, startA, startA + sweep * pct, 0);
         CGContextStrokePath(ctx);
     }
 
-    int bars = CAPrimaryBars(self);
-    const int dotCount = 4;
-    CGFloat inset = M_PI * 28.0 / 180.0;
-    CGFloat leftA  = M_PI_2 + gapHalf - inset;
-    CGFloat rightA = M_PI_2 - gapHalf + inset;
-    if (leftA < rightA) { CGFloat t = leftA; leftA = rightA; rightA = t; }
-    CGFloat dotR = g_dotSize * k;
-    UIColor *dim = [ink colorWithAlphaComponent:0.22];
-    for (int i = 0; i < dotCount; i++) {
-        CGFloat t = (CGFloat)i / (dotCount - 1);
-        CGFloat ang = leftA + (rightA - leftA) * t;
-        CGPoint d = CGPointMake(c.x + cos(ang) * r, c.y + sin(ang) * r);
-        BOOL on = (i < bars);
-        CGContextSetFillColorWithColor(ctx, (on ? ink : dim).CGColor);
-        CGContextFillEllipseInRect(ctx, CGRectMake(d.x - dotR, d.y - dotR, dotR * 2, dotR * 2));
+    // 訊號四點（默認關閉）
+    if (g_showDots) {
+        int bars = CAPrimaryBars(self);
+        const int dotCount = 4;
+        CGFloat inset = M_PI * 28.0 / 180.0;
+        CGFloat leftA  = M_PI_2 + gapHalf - inset;
+        CGFloat rightA = M_PI_2 - gapHalf + inset;
+        if (leftA < rightA) { CGFloat t = leftA; leftA = rightA; rightA = t; }
+        CGFloat dotR = g_dotSize * k;
+        UIColor *dim = [ink colorWithAlphaComponent:0.22];
+        for (int i = 0; i < dotCount; i++) {
+            CGFloat t = (CGFloat)i / (dotCount - 1);
+            CGFloat ang = leftA + (rightA - leftA) * t;
+            CGPoint d = CGPointMake(c.x + cos(ang) * r, c.y + sin(ang) * r);
+            BOOL on = (i < bars);
+            CGContextSetFillColorWithColor(ctx, (on ? ink : dim).CGColor);
+            CGContextFillEllipseInRect(ctx, CGRectMake(d.x - dotR, d.y - dotR, dotR * 2, dotR * 2));
+        }
     }
 
-    CGPoint wc = CGPointMake(c.x, c.y + g_wifiOff * k);
-    if (CAHotspotActive(self)) {
-        CADrawHotspot(ctx, wc, r / 9.5, ink);
-    } else if (CAWiFiConnected()) {
-        CADrawWifi(ctx, wc, r / 9.5, ink);
-    } else {
-        NSString *rat = CARATString();
-        if (rat.length) {
-            NSDictionary *attrs = @{
-                NSFontAttributeName: [UIFont systemFontOfSize:7.6 * k weight:UIFontWeightBold],
-                NSForegroundColorAttributeName: ink
-            };
-            CGSize sz = [rat sizeWithAttributes:attrs];
-            [rat drawAtPoint:CGPointMake(wc.x - sz.width / 2.0, wc.y - sz.height / 2.0)
-              withAttributes:attrs];
+    // 圓心圖標（默認關閉）
+    if (g_showCenter) {
+        CGPoint wc = CGPointMake(c.x, c.y + g_wifiOff * k);
+        if (CAHotspotActive(self)) {
+            CADrawHotspot(ctx, wc, r / 9.5, ink);
+        } else if (CAWiFiConnected()) {
+            CADrawWifi(ctx, wc, r / 9.5, ink);
+        } else {
+            NSString *rat = CARATString();
+            if (rat.length) {
+                NSDictionary *attrs = @{
+                    NSFontAttributeName: [UIFont systemFontOfSize:7.6 * k weight:UIFontWeightBold],
+                    NSForegroundColorAttributeName: ink
+                };
+                CGSize sz = [rat sizeWithAttributes:attrs];
+                [rat drawAtPoint:CGPointMake(wc.x - sz.width / 2.0, wc.y - sz.height / 2.0)
+                  withAttributes:attrs];
+            }
         }
     }
 
@@ -586,6 +621,8 @@ static void CADrawWidget(UIView *self, CGContextRef ctx, CGRect b) {
 
 static void hook_batt_draw(UIView *self, SEL _cmd) {
     if (!g_enabled || !CAIsStatusContext(self)) { orig_batt_draw(self, _cmd); return; }
+    // 控制中心語境：完全放行原生（控制中心狀態欄恢復原狀）
+    if (CAIsControlCenterContext(self)) { orig_batt_draw(self, _cmd); return; }
     if (!g_ink) {
         UIColor *clock = CAScanClockColor(self);
         if (clock) g_ink = clock;
