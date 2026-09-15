@@ -48,6 +48,14 @@ static BOOL    g_ccOn     = YES;    // 控制中心狀態欄：顯示 Duo 圖標
 static CGFloat g_ccScale  = 1.0;
 static CGFloat g_ccDx     = 0.0;
 static CGFloat g_ccDy     = 0.0;
+// ★ 效能：重掃描節流（修「開 App/後台卡片過場卡頓」——把全樹掃描移出繪製熱路徑）
+static BOOL   g_hotspotActive = NO;
+static int    g_barsCache = 0;
+static BOOL   g_wifiCache = NO;
+static NSString *g_ratCache = @"";
+static double g_hideAt = 0;
+static double g_inkScanAt = 0;
+
 // 元件開關（v1.8 精簡模式：默認只畫電量弧）
 static BOOL    g_showTrack  = YES;  // 圓環底槽（v1.8.2 恢復默認顯示）
 static BOOL    g_showDots   = YES;  // 訊號點（v1.8.2 恢復默認顯示）
@@ -253,6 +261,9 @@ static UIColor *CAScanClockColor(UIView *anyStatusView) {
 @property (nonatomic, assign) CGPoint naturalCenter;
 @property (nonatomic, assign) BOOL captured;
 @property (nonatomic, assign) CGPoint appliedCenter;
+@property (nonatomic, assign) BOOL hideInited;
+@property (nonatomic, assign) BOOL clipInited;
+@property (nonatomic, assign) double clipAt;
 @end
 @implementation CABattInfo
 @end
@@ -425,14 +436,6 @@ static int CANativeBars(UIView *batt) {
     return -1;
 }
 
-static int CAPrimaryBars(UIView *batt) {
-    int native = CANativeBars(batt);
-    int ct = CACTBars();
-    if (native <= 0 && ct > 0) return ct;          // 原生讀不到有效值 → CT 補
-    if (native >= 0) return native;
-    return ct >= 0 ? ct : 0;
-}
-
 static void CADressBattery(UIView *batt) {
     CABattInfo *info = objc_getAssociatedObject(batt, &kCABattInfoKey);
     if (!info) {
@@ -447,6 +450,10 @@ static void CADressBattery(UIView *batt) {
     // 否則會破壞系統的圓角遮罩：開 App 動畫、後台卡片圓角變方形就是這個原因）
     // 控制中心語境：額外允許走 CC/CoverSheet 類祖先（修 CC 裡的隱形邊框），同樣遇 Window 即停
     BOOL inCC = CAIsControlCenterContext(batt);
+    double nowT = CACurrentMediaTime();
+    if (!info.clipInited || nowT - info.clipAt > 1.0) {
+    info.clipInited = YES;
+    info.clipAt = nowT;
     UIView *anc = batt;
     while (anc) {
         NSString *cn = NSStringFromClass(anc.class);
@@ -459,6 +466,7 @@ static void CADressBattery(UIView *batt) {
         if (anc.clipsToBounds) anc.clipsToBounds = NO;
         anc.layer.masksToBounds = NO;
         anc = anc.superview;
+    }
     }
     // 畫布自身：強制 CALayer 透明（對抗系統可能直接改 layer 的 opaque/背景）
     batt.layer.opaque = NO;
@@ -511,9 +519,12 @@ static void CADressBattery(UIView *batt) {
     CATakeOver(batt, YES);
 
     // 控制中心語境：不隱藏任何原生項（左側雙卡訊號列/熱點圖標等全部保留），只接管電量畫布
-    if (CAIsControlCenterContext(batt)) return;
+    if (inCC) return;
 
-    // 隱藏原生槽位（擴大到整個狀態欄樹；類名或 identifier 命中都藏）
+    // 隱藏原生槽位（節流：首次立即掃，之後每秒最多一次）
+    if (info.hideInited && nowT - g_hideAt <= 1.0) return;
+    info.hideInited = YES;
+    g_hideAt = nowT;
     UIView *root = CAStatusRoot(batt);
     NSMutableArray *q = [NSMutableArray arrayWithObject:root];
     int guard = 0;
@@ -637,7 +648,7 @@ static void CADrawWidget(UIView *self, CGContextRef ctx, CGRect b) {
 
     // 訊號四點（默認關閉）
     if (g_showDots) {
-        int bars = CAPrimaryBars(self);
+        int bars = g_barsCache;
         const int dotCount = 4;
         CGFloat inset = M_PI * 28.0 / 180.0;
         CGFloat leftA  = M_PI_2 + gapHalf - inset;
@@ -658,12 +669,12 @@ static void CADrawWidget(UIView *self, CGContextRef ctx, CGRect b) {
     // 圓心圖標（默認關閉）
     if (g_showCenter) {
         CGPoint wc = CGPointMake(c.x, c.y + g_wifiOff * k);
-        if (CAHotspotActive(self)) {
+        if (g_hotspotActive) {
             CADrawHotspot(ctx, wc, r / 9.5, fancy);
-        } else if (CAWiFiConnected()) {
+        } else if (g_wifiCache) {
             CADrawWifi(ctx, wc, r / 9.5, fancy);
         } else {
-            NSString *rat = CARATString();
+            NSString *rat = g_ratCache;
             if (rat.length) {
                 NSDictionary *attrs = @{
                     NSFontAttributeName: [UIFont systemFontOfSize:7.6 * k weight:UIFontWeightBold],
@@ -698,8 +709,12 @@ static void hook_batt_draw(UIView *self, SEL _cmd) {
     // 控制中心語境：開關關閉時完全放行原生
     if (CAIsControlCenterContext(self) && !g_ccOn) { orig_batt_draw(self, _cmd); return; }
     if (!g_ink) {
-        UIColor *clock = CAScanClockColor(self);
-        if (clock) g_ink = clock;
+        double nowT = CACurrentMediaTime();
+        if (nowT - g_inkScanAt > 1.0) {
+            g_inkScanAt = nowT;
+            UIColor *clock = CAScanClockColor(self);
+            if (clock) g_ink = clock;
+        }
     }
     CADressBattery(self);
     CADrawWidget(self, UIGraphicsGetCurrentContext(), self.bounds);
@@ -739,7 +754,22 @@ static void hook_applyStyle(UIView *self, SEL _cmd, id attrs) {
 }
 
 #pragma mark - 每秒心跳：重讀偏好 + 重新釘位 + 重繪
+static void CAHeavyRefresh(void) {
+    @autoreleasepool {
+        UIView *ref = g_battViews.allObjects.firstObject;
+        g_wifiCache = CAWiFiConnected();
+        g_ratCache = CARATString() ?: @"";
+        if (ref) {
+            g_hotspotActive = CAHotspotActive(ref);
+            int b = CANativeBars(ref);
+            if (b < 0) { int ct = CACTBars(); b = (ct >= 0) ? ct : 0; }
+            g_barsCache = b;
+        }
+    }
+}
+
 static void CATick(void) {
+    CAHeavyRefresh();
     CGFloat os_ = g_scale, ox = g_dx, oy = g_dy, ow = g_ringW,
             od = g_dotSize, og = g_arcGap, of_ = g_wifiOff, ob = g_dualBot;
     BOOL oe = g_enabled;
