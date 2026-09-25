@@ -143,10 +143,20 @@ static void LLApplyAsync(void) {
 #pragma mark - 診斷報告：收集 + 分享/剪貼板
 
 static NSString *g_lastReport = nil;
+static NSString *g_lastLockReport = nil;      // 最近一次在鎖屏狀態擷取的報告
+static NSDate   *g_lastLockReportAt = nil;
+
+static BOOL LLockScreenVisible(void) {
+    for (UIWindow *w in UIApplication.sharedApplication.windows) {
+        NSString *cn = NSStringFromClass(w.class);
+        if ([cn containsString:@"CoverSheetWindow"]) return !w.hidden;
+    }
+    return NO;
+}
 
 static NSString *LLBuildReport(void) {
     NSMutableString *out = [NSMutableString string];
-    [out appendString:@"# LockLayout 鎖屏視圖報告 v1.2\n"];
+    [out appendString:@"# LockLayout 鎖屏視圖報告 v1.3\n"];
     [out appendFormat:@"# 生成時間: %@\n", [NSDate date]];
 
     NSMutableArray *mediaCands = [NSMutableArray array];
@@ -154,6 +164,7 @@ static NSString *LLBuildReport(void) {
     UIView *m = nil, *n = nil;
     LLCollectTargets(&m, &n, mediaCands, notifCands);
 
+    [out appendFormat:@"\n== 擷取情境 ==\n鎖屏可見=%@\n", LLockScreenVisible() ? @"YES" : @"NO"];
     [out appendString:@"\n== 命中目標（插件實際會移動的視圖）==\n"];
     [out appendFormat:@"媒體: %@  frame=%@\n", m ? NSStringFromClass(m.class) : @"(未找到)", m ? NSStringFromCGRect(m.frame) : @"-"];
     [out appendFormat:@"通知: %@  frame=%@\n", n ? NSStringFromClass(n.class) : @"(未找到)", n ? NSStringFromCGRect(n.frame) : @"-"];
@@ -167,8 +178,15 @@ static NSString *LLBuildReport(void) {
     g_matchInfo = [NSString stringWithFormat:@"媒體=%@ 通知=%@",
                    m ? NSStringFromClass(m.class) : @"無", n ? NSStringFromClass(n.class) : @"無"];
 
+    // 所有視窗中的「媒體相關」與「通知相關」視圖（幫作者定位，不論是否鎖屏）
+    [out appendString:@"\n== 媒體相關視圖（全部視窗）==\n"];
+    [out appendString:@"\n== 通知相關視圖（全部視窗）==\n"];
+
     NSArray *keys = @[@"Media", @"NowPlaying", @"MRU", @"Notif", @"List", @"CoverSheet",
                       @"Lock", @"Poster", @"Complication", @"Chrono", @"Control"];
+    NSMutableArray *mediaAll = [NSMutableArray array];
+    NSMutableArray *notifAll = [NSMutableArray array];
+
     for (UIWindow *w in UIApplication.sharedApplication.windows) {
         [out appendFormat:@"\n== WINDOW %@ level=%.0f frame=%@\n", NSStringFromClass(w.class),
             (double)w.windowLevel, NSStringFromCGRect(w.frame)];
@@ -179,6 +197,10 @@ static NSString *LLBuildReport(void) {
             UIView *v = q.firstObject; [q removeObjectAtIndex:0];
             NSNumber *d = dep.firstObject; [dep removeObjectAtIndex:0];
             NSString *cn = NSStringFromClass(v.class);
+            if (LLMatchMedia(cn)) [mediaAll addObject:[NSString stringWithFormat:@"%@ (%@) %@",
+                                    cn, NSStringFromClass(w.class), NSStringFromCGRect(v.frame)]];
+            if (LLMatchNotif(cn)) [notifAll addObject:[NSString stringWithFormat:@"%@ (%@) %@",
+                                    cn, NSStringFromClass(w.class), NSStringFromCGRect(v.frame)]];
             BOOL interesting = NO;
             for (NSString *k in keys)
                 if ([cn rangeOfString:k options:NSCaseInsensitiveSearch].location != NSNotFound) {
@@ -198,6 +220,16 @@ static NSString *LLBuildReport(void) {
             }
         }
     }
+    // 插入媒體/通知總表
+    NSMutableString *extra = [NSMutableString string];
+    [extra appendString:@"\n== 媒體相關視圖（全部視窗）==\n"];
+    for (NSString *l in mediaAll) [extra appendFormat:@"  %@\n", l];
+    if (!mediaAll.count) [extra appendString:@"  (無)\n"];
+    [extra appendString:@"\n== 通知相關視圖（全部視窗）==\n"];
+    for (NSString *l in notifAll) [extra appendFormat:@"  %@\n", l];
+    if (!notifAll.count) [extra appendString:@"  (無)\n"];
+
+    [out insertString:extra atIndex:0];
     return out;
 }
 
@@ -247,7 +279,14 @@ static void LLPresentReport(NSString *text) {
 }
 
 static void LLScanNow(void) {
-    NSString *rep = LLBuildReport();
+    NSString *rep = nil;
+    if (g_lastLockReport) {
+        NSTimeInterval age = g_lastLockReportAt ? -[g_lastLockReportAt timeIntervalSinceNow] : 9999;
+        rep = [NSString stringWithFormat:@"# （此報告擷取自鎖屏狀態，%.0f 秒前）\n%@", age, g_lastLockReport];
+    } else {
+        rep = [NSString stringWithFormat:@"# （鎖屏時未成功擷取 → 以下是即時擷取；若鎖屏可見=NO，請先鎖屏停留 15 秒再點按鈕）\n%@",
+               LLBuildReport()];
+    }
     g_lastReport = rep;
     LLWriteReportFile(rep);
     LLPresentReport(rep);
@@ -296,13 +335,15 @@ static void LLScanCallback(CFNotificationCenterRef center, void *observer,
 #pragma mark - 鎖屏自動收集（每 15 秒一次，讓報告隨時可用）
 
 static void LLHookLockAppear(void) {
-    // 鎖屏佈局或出現時收集（節流 15 秒）
+    // 鎖屏可見時自動擷取（節流 10 秒），保存「最近一次鎖屏狀態」的報告
+    if (!LLockScreenVisible()) return;
     static double last = 0;
     double now = CACurrentMediaTime();
-    if (now - last < 15.0) return;
+    if (now - last < 10.0) return;
     last = now;
     NSString *rep = LLBuildReport();
-    g_lastReport = rep;
+    g_lastLockReport = rep;
+    g_lastLockReportAt = [NSDate date];
     LLWriteReportFile(rep);
 }
 
@@ -333,7 +374,7 @@ __attribute__((constructor)) static void ll_init(void) {
     // 每 5 秒兜底：套用位移 + 節流收集報告
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        [NSTimer scheduledTimerWithTimeInterval:5.0 repeats:YES block:^(NSTimer *t) {
+        [NSTimer scheduledTimerWithTimeInterval:3.0 repeats:YES block:^(NSTimer *t) {
             LLApplyNow();
             LLHookLockAppear();
         }];
