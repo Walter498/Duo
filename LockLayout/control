@@ -1,0 +1,9 @@
+Package: com.shuijia.locklayout
+Name: LockLayout
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Maintainer: 水甲嫩鸡
+Author: 水甲嫩鸡
+Depends: mobilesubstrate | ellekit, firmware (>= 15.0)
+Section: Tweaks
+Description: 鎖屏排版微調：用滑桿控制鎖屏媒體播放器與通知列表的起始高度（iOS 16-17 RootHide）

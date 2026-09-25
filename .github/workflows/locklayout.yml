@@ -1,0 +1,57 @@
+name: Build LockLayout (arm64e)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'LockLayout/**'
+      - '.github/workflows/locklayout.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          brew install ldid dpkg
+          git clone --recursive --depth 1 https://github.com/theos/theos.git "$HOME/theos"
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+
+      - name: Build LockLayout (arm64e)
+        working-directory: LockLayout
+        run: |
+          export THEOS="$HOME/theos"
+          set -o pipefail
+          make package FINALPACKAGE=1 TARGET=iphone:clang:latest:14.0 2>&1 | tee /tmp/ll.log
+
+      - name: Show log on failure
+        if: failure()
+        run: tail -120 /tmp/ll.log || true
+
+      - name: Inspect arch (must be arm64e)
+        if: success()
+        run: find LockLayout/.theos/obj -name '*.dylib' -exec file {} \;
+
+      - name: Commit deb back to repo
+        if: success()
+        run: |
+          mkdir -p packages
+          cp LockLayout/packages/*.deb packages/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/*.deb
+          git commit -m "CI: build LockLayout arm64e deb [skip ci]" || echo "nothing new"
+          git push || true
+
+      - name: Upload artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LockLayout-arm64e
+          path: LockLayout/packages/*.deb

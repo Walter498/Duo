@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>items</key>
+	<array>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>開啟簡體中文後整頁立即切換；關閉即回繁體。</string>
+			<key>label</key>
+			<string>語言 / Language</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<false/>
+			<key>defaults</key>
+			<string>com.shuijia.locklayout</string>
+			<key>key</key>
+			<string>langSimple</string>
+			<key>label</key>
+			<string>簡體中文（關閉＝繁體）</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>滑桿一鬆手一秒內生效，不需要 respring。</string>
+			<key>label</key>
+			<string>啟用</string>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.shuijia.locklayout/prefs</string>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<true/>
+			<key>defaults</key>
+			<string>com.shuijia.locklayout</string>
+			<key>key</key>
+			<string>enabled</string>
+			<key>label</key>
+			<string>啟用 LockLayout</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>控制鎖屏那張播放卡（進度條＋按鈕）的上下位置。1＝原始位置；0＝上移 100pt；2＝下移 100pt。</string>
+			<key>label</key>
+			<string>鎖屏媒體播放器</string>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.shuijia.locklayout/prefs</string>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<true/>
+			<key>defaults</key>
+			<string>com.shuijia.locklayout</string>
+			<key>key</key>
+			<string>mediaEnabled</string>
+			<key>label</key>
+			<string>調整媒體播放器位置</string>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.shuijia.locklayout/prefs</string>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>default</key>
+			<real>1.0</real>
+			<key>defaults</key>
+			<string>com.shuijia.locklayout</string>
+			<key>key</key>
+			<string>mediaOffset</string>
+			<key>label</key>
+			<string>播放器上下位置　（1＝原始；0＝上移；2＝下移）</string>
+			<key>max</key>
+			<real>2.0</real>
+			<key>min</key>
+			<real>0.0</real>
+			<key>showValue</key>
+			<true/>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>控制鎖屏通知（時間下方開始的那一串）的起始高度。1＝原始；0＝上移 250pt；2＝下移 250pt。</string>
+			<key>label</key>
+			<string>鎖屏通知列表</string>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.shuijia.locklayout/prefs</string>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<true/>
+			<key>defaults</key>
+			<string>com.shuijia.locklayout</string>
+			<key>key</key>
+			<string>notifEnabled</string>
+			<key>label</key>
+			<string>調整通知列表起始高度</string>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.shuijia.locklayout/prefs</string>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>default</key>
+			<real>1.0</real>
+			<key>defaults</key>
+			<string>com.shuijia.locklayout</string>
+			<key>key</key>
+			<string>notifOffset</string>
+			<key>label</key>
+			<string>通知起始高度　（1＝原始；0＝上移；2＝下移）</string>
+			<key>max</key>
+			<real>2.0</real>
+			<key>min</key>
+			<real>0.0</real>
+			<key>showValue</key>
+			<true/>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>如果滑桿沒反應（不同系統版本的視圖名稱可能不同），請在鎖屏狀態下點下面的按鈕生成報告，把 /var/mobile/Library/Preferences/LockLayoutTree.txt 發給作者，就能精準對位。</string>
+			<key>label</key>
+			<string>診斷</string>
+		</dict>
+		<dict>
+			<key>action</key>
+			<string>ll_scan:</string>
+			<key>alignment</key>
+			<integer>1</integer>
+			<key>cell</key>
+			<string>PSButtonCell</string>
+			<key>label</key>
+			<string>掃描鎖屏並生成報告</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>LockLayout 1.0.0 · 作者：水甲嫩雞
+提示：點滑桿右側數字可精確輸入。</string>
+			<key>label</key>
+			<string>關於</string>
+		</dict>
+	</array>
+</dict>
+</plist>
