@@ -152,7 +152,7 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>LockLayout 1.1.0 · 作者：水甲嫩鸡
+			<string>LockLayout 1.2.0 · 作者：水甲嫩鸡
 提示：点滑杆右侧数字可精确输入。</string>
 			<key>label</key>
 			<string>关于</string>

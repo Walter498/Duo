@@ -81,6 +81,37 @@ static BOOL LLMatchNotif(NSString *cn) {
 
 static __weak UIView *g_mediaView = nil;
 static __weak UIView *g_notifView = nil;
+static NSString *g_matchInfo = @"(尚未掃描)";
+
+static CGFloat LLArea(UIView *v) { return v.frame.size.width * v.frame.size.height; }
+
+// 收集：鎖屏內的通知列表 / 媒體播放器候選
+static void LLCollectTargets(UIView **outMedia, UIView **outNotif,
+                             NSMutableArray *mediaCands, NSMutableArray *notifCands) {
+    UIView *media = nil, *notif = nil;
+    for (UIWindow *w in UIApplication.sharedApplication.windows) {
+        NSMutableArray *q = [NSMutableArray arrayWithObject:w];
+        int guard = 0;
+        while (q.count && guard++ < 6000) {
+            UIView *v = q.firstObject;
+            [q removeObjectAtIndex:0];
+            NSString *cn = NSStringFromClass(v.class);
+            if (LLIsLockContext(v)) {
+                if (LLMatchMedia(cn)) {
+                    if (mediaCands) [mediaCands addObject:v];
+                    if (!media || LLArea(v) > LLArea(media)) media = v;
+                }
+                if (LLMatchNotif(cn)) {
+                    if (notifCands) [notifCands addObject:v];
+                    if (!notif || LLArea(v) > LLArea(notif)) notif = v;
+                }
+            }
+            for (UIView *s in v.subviews) [q addObject:s];
+        }
+    }
+    if (outMedia) *outMedia = media;
+    if (outNotif) *outNotif = notif;
+}
 
 static void LLApplyNow(void) {
     if (!g_enabled) {
@@ -88,22 +119,8 @@ static void LLApplyNow(void) {
         if (g_notifView) g_notifView.transform = CGAffineTransformIdentity;
         return;
     }
-
     UIView *media = nil, *notif = nil;
-    for (UIWindow *w in UIApplication.sharedApplication.windows) {
-        NSMutableArray *q = [NSMutableArray arrayWithObject:w];
-        int guard = 0;
-        while (q.count && guard++ < 4000) {
-            UIView *v = q.firstObject;
-            [q removeObjectAtIndex:0];
-            NSString *cn = NSStringFromClass(v.class);
-            if (!media && LLMatchMedia(cn) && LLIsLockContext(v)) media = v;
-            if (!notif && LLMatchNotif(cn) && LLIsLockContext(v)) notif = v;
-            if (media && notif) break;
-            for (UIView *s in v.subviews) [q addObject:s];
-        }
-        if (media && notif) break;
-    }
+    LLCollectTargets(&media, &notif, nil, nil);
 
     if (g_mediaOn && media) {
         g_mediaView = media;
@@ -129,13 +146,31 @@ static NSString *g_lastReport = nil;
 
 static NSString *LLBuildReport(void) {
     NSMutableString *out = [NSMutableString string];
-    [out appendString:@"# LockLayout 鎖屏視圖報告 v1.1\n"];
+    [out appendString:@"# LockLayout 鎖屏視圖報告 v1.2\n"];
     [out appendFormat:@"# 生成時間: %@\n", [NSDate date]];
+
+    NSMutableArray *mediaCands = [NSMutableArray array];
+    NSMutableArray *notifCands = [NSMutableArray array];
+    UIView *m = nil, *n = nil;
+    LLCollectTargets(&m, &n, mediaCands, notifCands);
+
+    [out appendString:@"\n== 命中目標（插件實際會移動的視圖）==\n"];
+    [out appendFormat:@"媒體: %@  frame=%@\n", m ? NSStringFromClass(m.class) : @"(未找到)", m ? NSStringFromCGRect(m.frame) : @"-"];
+    [out appendFormat:@"通知: %@  frame=%@\n", n ? NSStringFromClass(n.class) : @"(未找到)", n ? NSStringFromCGRect(n.frame) : @"-"];
+    [out appendFormat:@"媒體候選 %lu 個：\n", (unsigned long)mediaCands.count];
+    for (UIView *v in mediaCands)
+        [out appendFormat:@"   - %@ frame=%@\n", NSStringFromClass(v.class), NSStringFromCGRect(v.frame)];
+    [out appendFormat:@"通知候選 %lu 個：\n", (unsigned long)notifCands.count];
+    for (UIView *v in notifCands)
+        [out appendFormat:@"   - %@ frame=%@\n", NSStringFromClass(v.class), NSStringFromCGRect(v.frame)];
+
+    g_matchInfo = [NSString stringWithFormat:@"媒體=%@ 通知=%@",
+                   m ? NSStringFromClass(m.class) : @"無", n ? NSStringFromClass(n.class) : @"無"];
+
     NSArray *keys = @[@"Media", @"NowPlaying", @"MRU", @"Notif", @"List", @"CoverSheet",
-                      @"Lock", @"Poster", @"Complication", @"Chrono", @"Control", @"View"];
+                      @"Lock", @"Poster", @"Complication", @"Chrono", @"Control"];
     for (UIWindow *w in UIApplication.sharedApplication.windows) {
-        NSString *wcn = NSStringFromClass(w.class);
-        [out appendFormat:@"\n== WINDOW %@ level=%.0f frame=%@\n", wcn,
+        [out appendFormat:@"\n== WINDOW %@ level=%.0f frame=%@\n", NSStringFromClass(w.class),
             (double)w.windowLevel, NSStringFromCGRect(w.frame)];
         NSMutableArray *q = [NSMutableArray arrayWithObject:w];
         NSMutableArray *dep = [NSMutableArray arrayWithObject:@0];
@@ -150,7 +185,8 @@ static NSString *LLBuildReport(void) {
                     interesting = YES; break;
                 }
             BOOL inLock = LLIsLockContext(v);
-            if (interesting || inLock) {
+            BOOL bigEnough = v.frame.size.width > 20 && v.frame.size.height > 8;
+            if ((interesting || inLock) && bigEnough) {
                 [out appendFormat:@"%@%@%@ frame=%@ hidden=%d alpha=%.2f\n",
                     [@"" stringByPaddingToLength:d.intValue * 2 withString:@" " startingAtIndex:0],
                     inLock ? @"[LOCK] " : @"", cn,
