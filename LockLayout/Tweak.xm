@@ -1,21 +1,19 @@
 /*
- * LockLayout —— 鎖屏排版微調（媒體播放器 / 通知列表 起始高度）
+ * LockLayout —— 鎖屏排版微調（媒體播放器 / 通知列表 起始高度）v1.1
  * iOS 16–17 / RootHide rootless / SpringBoard
  *
- * 定位：
- *   CSCoverSheetViewController  鎖屏根控制器（CoverSheet）
- *   CSMediaControlsViewController 鎖屏媒體播放器
- *   CSCombinedListViewController / NCNotificationListView 鎖屏通知列表
- *
- * 做法：hook 佈局回調 → 系統排完版後，對目標視圖施加垂直 transform
- *       （transform 不會被系統佈局覆蓋；只影響鎖屏，其它語境不碰）
+ * v1.1：
+ *   1. 修復 hook 原函數指針共用導致的互相覆蓋（每個類獨立保存原 IMP）
+ *   2. 診斷報告改為「鎖屏內直接彈出分享面板 + 同時複製到剪貼板」（不再依賴寫檔）
+ *   3. 鎖屏出現後自動收集視圖樹（每 15 秒刷新一次），點按鈕即可立即分享
+ *   4. 載入標記檔：驗證插件是否真的被注入
  */
 
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <substrate.h>
 
-#define kDomain CFSTR("com.shuijia.locklayout")
+#define kDomain      CFSTR("com.shuijia.locklayout")
 #define kNotifyPrefs CFSTR("com.shuijia.locklayout/prefs")
 #define kNotifyScan  CFSTR("com.shuijia.locklayout/scan")
 
@@ -24,7 +22,7 @@
 static BOOL    g_enabled  = YES;
 static BOOL    g_mediaOn  = YES;
 static BOOL    g_notifOn  = YES;
-static CGFloat g_mediaOff = 0.0;    // pt，負=上移
+static CGFloat g_mediaOff = 0.0;
 static CGFloat g_notifOff = 0.0;
 
 static CGFloat LLPrefFloat(NSString *key, CGFloat def) {
@@ -41,10 +39,10 @@ static void LLLoadPrefs(void) {
     g_enabled = LLPrefFloat(@"enabled", 1) != 0;
     g_mediaOn = LLPrefFloat(@"mediaEnabled", 1) != 0;
     g_notifOn = LLPrefFloat(@"notifEnabled", 1) != 0;
-    CGFloat mv = LLPrefFloat(@"mediaOffset", 1);   // 0–2，1＝原位（±100pt）
+    CGFloat mv = LLPrefFloat(@"mediaOffset", 1);
     if (mv < -0.001 || mv > 2.001) mv = 1;
     g_mediaOff = (mv - 1) * 100.0;
-    CGFloat nv = LLPrefFloat(@"notifOffset", 1);   // 0–2，1＝原位（±250pt）
+    CGFloat nv = LLPrefFloat(@"notifOffset", 1);
     if (nv < -0.001 || nv > 2.001) nv = 1;
     g_notifOff = (nv - 1) * 250.0;
 }
@@ -125,78 +123,123 @@ static void LLApplyAsync(void) {
     dispatch_async(dispatch_get_main_queue(), ^{ LLApplyNow(); });
 }
 
-#pragma mark - Hook：佈局回調（系統排完版後立即套用）
+#pragma mark - 診斷報告：收集 + 分享/剪貼板
 
-static void (*orig_cs_root)(UIViewController *, SEL);
-static void hook_cs_root(UIViewController *self, SEL _cmd) {
-    orig_cs_root(self, _cmd);
-    LLApplyAsync();
+static NSString *g_lastReport = nil;
+
+static NSString *LLBuildReport(void) {
+    NSMutableString *out = [NSMutableString string];
+    [out appendString:@"# LockLayout 鎖屏視圖報告 v1.1\n"];
+    [out appendFormat:@"# 生成時間: %@\n", [NSDate date]];
+    NSArray *keys = @[@"Media", @"NowPlaying", @"MRU", @"Notif", @"List", @"CoverSheet",
+                      @"Lock", @"Poster", @"Complication", @"Chrono", @"Control", @"View"];
+    for (UIWindow *w in UIApplication.sharedApplication.windows) {
+        NSString *wcn = NSStringFromClass(w.class);
+        [out appendFormat:@"\n== WINDOW %@ level=%.0f frame=%@\n", wcn,
+            (double)w.windowLevel, NSStringFromCGRect(w.frame)];
+        NSMutableArray *q = [NSMutableArray arrayWithObject:w];
+        NSMutableArray *dep = [NSMutableArray arrayWithObject:@0];
+        int guard = 0;
+        while (q.count && guard++ < 6000) {
+            UIView *v = q.firstObject; [q removeObjectAtIndex:0];
+            NSNumber *d = dep.firstObject; [dep removeObjectAtIndex:0];
+            NSString *cn = NSStringFromClass(v.class);
+            BOOL interesting = NO;
+            for (NSString *k in keys)
+                if ([cn rangeOfString:k options:NSCaseInsensitiveSearch].location != NSNotFound) {
+                    interesting = YES; break;
+                }
+            BOOL inLock = LLIsLockContext(v);
+            if (interesting || inLock) {
+                [out appendFormat:@"%@%@%@ frame=%@ hidden=%d alpha=%.2f\n",
+                    [@"" stringByPaddingToLength:d.intValue * 2 withString:@" " startingAtIndex:0],
+                    inLock ? @"[LOCK] " : @"", cn,
+                    NSStringFromCGRect(v.frame), v.hidden, v.alpha];
+            }
+            for (UIView *s in v.subviews) {
+                [q addObject:s];
+                [dep addObject:@(d.intValue + 1)];
+            }
+        }
+    }
+    return out;
 }
 
-static void (*orig_cs_list)(UIViewController *, SEL);
-static void hook_cs_list(UIViewController *self, SEL _cmd) {
-    orig_cs_list(self, _cmd);
-    LLApplyAsync();
+static void LLWriteReportFile(NSString *text) {
+    NSArray *paths = @[@"/var/mobile/Library/Preferences/LockLayoutTree.txt",
+                       @"/var/jb/var/mobile/Library/Preferences/LockLayoutTree.txt",
+                       @"/var/mobile/Documents/LockLayoutTree.txt"];
+    for (NSString *p in paths) {
+        NSData *data = [text dataUsingEncoding:NSUTF8StringEncoding];
+        [data writeToFile:p atomically:YES];
+    }
 }
 
-static void (*orig_cs_media)(UIViewController *, SEL);
-static void hook_cs_media(UIViewController *self, SEL _cmd) {
-    orig_cs_media(self, _cmd);
-    LLApplyAsync();
+// 在 SpringBoard 內直接彈分享面板（同時複製到剪貼板，雙保險）
+static void LLPresentReport(NSString *text) {
+    UIPasteboard.generalPasteboard.string = text;   // 一定可用的交付方式
+
+    UIWindow *win = nil;
+    for (UIWindow *w in UIApplication.sharedApplication.windows)
+        if (w.isKeyWindow) { win = w; break; }
+    if (!win) win = UIApplication.sharedApplication.windows.firstObject;
+
+    UIViewController *root = win.rootViewController;
+    if (!root) return;
+
+    UIViewController *top = root;
+    while (top.presentedViewController) top = top.presentedViewController;
+
+    UIActivityViewController *av =
+        [[UIActivityViewController alloc] initWithActivityItems:@[text] applicationActivities:nil];
+    av.modalPresentationStyle = UIModalPresentationPageSheet;
+    if (av.popoverPresentationController) {
+        av.popoverPresentationController.sourceView = top.view;
+        av.popoverPresentationController.sourceRect =
+            CGRectMake(top.view.bounds.size.width / 2.0, top.view.bounds.size.height / 2.0, 1, 1);
+    }
+    @try {
+        [top presentViewController:av animated:YES completion:nil];
+    } @catch (NSException *e) {
+        UIAlertController *al = [UIAlertController
+            alertControllerWithTitle:@"LockLayout"
+                             message:@"報告已複製到剪貼板，直接貼到聊天視窗發給作者即可。"
+                      preferredStyle:UIAlertControllerStyleAlert];
+        [al addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        @try { [top presentViewController:al animated:YES completion:nil]; } @catch (NSException *e2) {}
+    }
 }
 
-static void (*orig_nc_view)(UIView *, SEL);
-static void hook_nc_view(UIView *self, SEL _cmd) {
-    orig_nc_view(self, _cmd);
-    LLApplyAsync();
+static void LLScanNow(void) {
+    NSString *rep = LLBuildReport();
+    g_lastReport = rep;
+    LLWriteReportFile(rep);
+    LLPresentReport(rep);
 }
+
+#pragma mark - Hook（每個類獨立原函數指針，絕不共用）
+
+#define LL_DEFINE_HOOK(name, sel, T)                       \
+    static void (*orig_##name)(T, SEL);                    \
+    static void hook_##name(T self, SEL _cmd) {            \
+        if (orig_##name) orig_##name(self, _cmd);          \
+        LLApplyAsync();                                    \
+    }
+
+LL_DEFINE_HOOK(cs_root,   viewDidLayoutSubviews, UIViewController *)
+LL_DEFINE_HOOK(cs_list,   viewDidLayoutSubviews, UIViewController *)
+LL_DEFINE_HOOK(cs_media,  viewDidLayoutSubviews, UIViewController *)
+LL_DEFINE_HOOK(nc_list,   layoutSubviews,        UIView *)
+LL_DEFINE_HOOK(cs_view,   layoutSubviews,        UIView *)
+LL_DEFINE_HOOK(nc_vc,     viewDidLayoutSubviews, UIViewController *)
+LL_DEFINE_HOOK(mru_view,  layoutSubviews,        UIView *)
+LL_DEFINE_HOOK(cs_cl_view, layoutSubviews,       UIView *)
 
 static void LLHook(NSString *clsName, SEL sel, IMP hook, IMP *orig) {
     Class c = NSClassFromString(clsName);
     if (!c) return;
     if (!class_getInstanceMethod(c, sel)) return;
     MSHookMessageEx(c, sel, hook, orig);
-}
-
-#pragma mark - 掃描診斷：把鎖屏視圖樹導出成檔案（供作者精準定位）
-
-static void LLDumpTree(void) {
-    NSMutableString *out = [NSMutableString string];
-    [out appendString:@"# LockLayout lock-screen tree dump\n"];
-    NSArray *keys = @[@"Media", @"NowPlaying", @"MRU", @"Notif", @"List",
-                      @"CoverSheet", @"Lock", @"Poster", @"Complication", @"Chrono", @"Control"];
-    for (UIWindow *w in UIApplication.sharedApplication.windows) {
-        [out appendFormat:@"\n== WINDOW %@ level=%.0f frame=%@\n",
-            NSStringFromClass(w.class), (double)w.windowLevel, NSStringFromCGRect(w.frame)];
-        NSMutableArray *q = [NSMutableArray arrayWithObject:w];
-        NSMutableArray *depth = [NSMutableArray arrayWithObject:@0];
-        int guard = 0;
-        while (q.count && guard++ < 4000) {
-            UIView *v = q.firstObject; [q removeObjectAtIndex:0];
-            NSNumber *d = depth.firstObject; [depth removeObjectAtIndex:0];
-            NSString *cn = NSStringFromClass(v.class);
-            BOOL interesting = NO;
-            for (NSString *k in keys)
-                if ([cn rangeOfString:k options:NSCaseInsensitiveSearch].location != NSNotFound) { interesting = YES; break; }
-            if (interesting) {
-                [out appendFormat:@"%@%@  frame=%@  hidden=%d alpha=%.2f\n",
-                    [@"" stringByPaddingToLength:d.intValue * 2 withString:@" " startingAtIndex:0],
-                    cn, NSStringFromCGRect(v.frame), v.hidden, v.alpha];
-            }
-            for (UIView *s in v.subviews) {
-                [q addObject:s];
-                [depth addObject:@(d.intValue + 1)];
-            }
-        }
-    }
-    NSString *path = @"/var/mobile/Library/Preferences/LockLayoutTree.txt";
-    NSError *err = nil;
-    BOOL ok = [out writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:&err];
-    if (!ok) {
-        [out writeToFile:@"/tmp/LockLayoutTree.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];
-        path = @"/tmp/LockLayoutTree.txt";
-    }
-    NSLog(@"[LockLayout] tree dumped to %@ (%@)", path, err);
 }
 
 #pragma mark - 通知回調
@@ -211,7 +254,20 @@ static void LLPrefsChangedCallback(CFNotificationCenterRef center, void *observe
 
 static void LLScanCallback(CFNotificationCenterRef center, void *observer,
                            CFStringRef name, const void *object, CFDictionaryRef userInfo) {
-    dispatch_async(dispatch_get_main_queue(), ^{ LLDumpTree(); });
+    dispatch_async(dispatch_get_main_queue(), ^{ LLScanNow(); });
+}
+
+#pragma mark - 鎖屏自動收集（每 15 秒一次，讓報告隨時可用）
+
+static void LLHookLockAppear(void) {
+    // 鎖屏佈局或出現時收集（節流 15 秒）
+    static double last = 0;
+    double now = CACurrentMediaTime();
+    if (now - last < 15.0) return;
+    last = now;
+    NSString *rep = LLBuildReport();
+    g_lastReport = rep;
+    LLWriteReportFile(rep);
 }
 
 #pragma mark - 入口
@@ -219,22 +275,31 @@ static void LLScanCallback(CFNotificationCenterRef center, void *observer,
 __attribute__((constructor)) static void ll_init(void) {
     LLLoadPrefs();
 
+    // 載入標記檔（確認插件真的被注入）
+    NSString *mark = [NSString stringWithFormat:@"LockLayout loaded at %@\n", [NSDate date]];
+    [mark writeToFile:@"/var/mobile/Library/Preferences/LockLayoutLoaded.txt"
+           atomically:YES encoding:NSUTF8StringEncoding error:nil];
+
+    LLHook(@"CSCoverSheetView",                 @selector(layoutSubviews),        (IMP)hook_cs_view,  (IMP *)&orig_cs_view);
     LLHook(@"CSCoverSheetViewController",       @selector(viewDidLayoutSubviews), (IMP)hook_cs_root,  (IMP *)&orig_cs_root);
     LLHook(@"CSCombinedListViewController",     @selector(viewDidLayoutSubviews), (IMP)hook_cs_list,  (IMP *)&orig_cs_list);
+    LLHook(@"CSCombinedListView",               @selector(layoutSubviews),        (IMP)hook_cs_cl_view, (IMP *)&orig_cs_cl_view);
     LLHook(@"CSMediaControlsViewController",    @selector(viewDidLayoutSubviews), (IMP)hook_cs_media, (IMP *)&orig_cs_media);
-    LLHook(@"NCNotificationListView",           @selector(layoutSubviews),        (IMP)hook_nc_view,  (IMP *)&orig_nc_view);
-    LLHook(@"NCNotificationListViewController", @selector(viewDidLayoutSubviews), (IMP)hook_cs_list,  (IMP *)&orig_cs_list);
+    LLHook(@"NCNotificationListView",           @selector(layoutSubviews),        (IMP)hook_nc_list,  (IMP *)&orig_nc_list);
+    LLHook(@"NCNotificationListViewController", @selector(viewDidLayoutSubviews), (IMP)hook_nc_vc,    (IMP *)&orig_nc_vc);
+    LLHook(@"MRUNowPlayingView",                @selector(layoutSubviews),        (IMP)hook_mru_view, (IMP *)&orig_mru_view);
 
     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL,
         LLPrefsChangedCallback, kNotifyPrefs, NULL, (CFNotificationSuspensionBehavior)0);
     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL,
         LLScanCallback, kNotifyScan, NULL, (CFNotificationSuspensionBehavior)0);
 
-    // 每秒兜底（鎖屏捲動、動畫期間持續套用）
+    // 每 5 秒兜底：套用位移 + 節流收集報告
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) {
+        [NSTimer scheduledTimerWithTimeInterval:5.0 repeats:YES block:^(NSTimer *t) {
             LLApplyNow();
+            LLHookLockAppear();
         }];
     });
 }
